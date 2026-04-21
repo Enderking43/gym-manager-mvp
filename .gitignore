@@ -41,3 +41,7 @@ logs/
 # Coverage
 coverage/
 .nyc_output/
+
+# IA Prompts, Context & Roadmaps
+Claude.md
+Instrucciones.md
