@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const { initializeDatabase } = require('./src/database/db');
+const { registerHandlers } = require('./src/main/handlers');
 
 let adminWindow = null;
 let kioskWindow = null;
@@ -9,7 +10,7 @@ function createAdminWindow() {
   adminWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    show: false, // Oculta hasta que esté lista
+    show: false,
     title: 'Gimnasio MVP — Administrador',
     webPreferences: {
       preload: path.join(__dirname, 'src/main/preload.js'),
@@ -19,14 +20,9 @@ function createAdminWindow() {
   });
 
   adminWindow.loadFile(path.join(__dirname, 'src/renderer/admin/index.html'));
-
-  adminWindow.once('ready-to-show', () => {
-    adminWindow.show();
-  });
-
+  adminWindow.once('ready-to-show', () => adminWindow.show());
   adminWindow.on('closed', () => {
     adminWindow = null;
-    // Al cerrar la ventana admin se cierra toda la app
     app.quit();
   });
 }
@@ -35,11 +31,10 @@ function createKioskWindow() {
   kioskWindow = new BrowserWindow({
     width: 1024,
     height: 768,
-    show: false, // Oculta hasta que esté lista
+    show: false,
     title: 'Gimnasio MVP — Kiosco',
     fullscreen: true,
-    frame: false,       // Sin barra de título ni controles
-    kiosk: false,       // Se activa en producción vía flag
+    frame: false,
     webPreferences: {
       preload: path.join(__dirname, 'src/main/preload.js'),
       contextIsolation: true,
@@ -48,19 +43,13 @@ function createKioskWindow() {
   });
 
   kioskWindow.loadFile(path.join(__dirname, 'src/renderer/kiosk/index.html'));
-
-  kioskWindow.once('ready-to-show', () => {
-    kioskWindow.show();
-  });
-
-  kioskWindow.on('closed', () => {
-    kioskWindow = null;
-  });
+  kioskWindow.once('ready-to-show', () => kioskWindow.show());
+  kioskWindow.on('closed', () => { kioskWindow = null; });
 }
 
 app.whenReady().then(() => {
-  // Inicializar base de datos antes de levantar ventanas
-  initializeDatabase();
+  initializeDatabase(app.getPath('userData'));
+  registerHandlers();
 
   createAdminWindow();
   createKioskWindow();
@@ -74,7 +63,5 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  if (process.platform !== 'darwin') app.quit();
 });
