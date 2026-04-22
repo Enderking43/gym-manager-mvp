@@ -13,6 +13,7 @@
   "dependencies": {
     "better-sqlite3": "^12.9.0",
     "electron": "^32.3.3",
+    "exceljs": "^4.4.0",
     "sql.js": "^1.14.1"
   },
   "devDependencies": {

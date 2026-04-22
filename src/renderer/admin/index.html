@@ -4,9 +4,320 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Administrador — Gimnasio MVP</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .nav-item { @apply flex items-center gap-3 px-4 py-3 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white cursor-pointer transition-all text-sm font-medium; }
+    .nav-item.active { @apply bg-indigo-600 text-white; }
+    .view { display: none; }
+    .view.active { display: block; }
+    .stat-card { @apply bg-white rounded-xl p-6 shadow-sm border border-slate-100; }
+    .form-label { @apply block text-sm font-medium text-slate-700 mb-1; }
+    .form-input { @apply w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent; }
+    .btn-primary { @apply px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed; }
+    .btn-secondary { @apply px-4 py-2 bg-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-300 transition-colors; }
+    .btn-green { @apply px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors; }
+    .badge-vigente { @apply inline-block px-2 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-800 rounded-full; }
+    .badge-vencida { @apply inline-block px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800 rounded-full; }
+    .badge-sin { @apply inline-block px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 rounded-full; }
+    .toast { position: fixed; bottom: 24px; right: 24px; z-index: 9999; transition: opacity 0.3s; }
+  </style>
 </head>
-<body>
-  <h1>Panel de Administración</h1>
-  <p>Fase 1 completada. Interfaz en construcción (Fase 4).</p>
+<body class="bg-slate-100 h-screen overflow-hidden">
+
+  <div class="flex h-screen">
+
+    <!-- ── Sidebar ──────────────────────────────────────────────────────── -->
+    <aside class="w-60 bg-slate-900 flex flex-col flex-shrink-0">
+
+      <!-- Logo -->
+      <div class="px-5 py-6 border-b border-slate-700">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-lg">G</div>
+          <div>
+            <p class="text-white font-semibold text-sm leading-none">Gimnasio MVP</p>
+            <p class="text-slate-400 text-xs mt-0.5">Panel Admin</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Nav -->
+      <nav class="flex-1 px-3 py-4 space-y-1">
+        <button class="nav-item w-full active" data-view="dashboard">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+          Dashboard
+        </button>
+        <button class="nav-item w-full" data-view="nuevo-socio">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
+          Nuevo Socio
+        </button>
+        <button class="nav-item w-full" data-view="cobrar-cuota">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+          Cobrar Cuota
+        </button>
+        <button class="nav-item w-full" data-view="deudores">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          Deudores
+        </button>
+        <button class="nav-item w-full" data-view="reportes">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Reportes
+        </button>
+      </nav>
+
+      <!-- Footer con fecha -->
+      <div class="px-5 py-4 border-t border-slate-700">
+        <p class="text-slate-400 text-xs" id="sidebar-date"></p>
+      </div>
+    </aside>
+
+    <!-- ── Contenido Principal ────────────────────────────────────────────── -->
+    <main class="flex-1 overflow-y-auto">
+
+      <!-- ── VIEW: Dashboard ───────────────────────────────────────────── -->
+      <div id="view-dashboard" class="view active p-8">
+        <div class="mb-8">
+          <h1 class="text-2xl font-bold text-slate-800">Dashboard</h1>
+          <p class="text-slate-500 text-sm mt-1" id="dashboard-date"></p>
+        </div>
+
+        <!-- Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+          <div class="stat-card">
+            <p class="text-sm text-slate-500 font-medium">Caja del día</p>
+            <p class="text-3xl font-bold text-emerald-600 mt-2" id="stat-caja">$0</p>
+            <p class="text-xs text-slate-400 mt-1" id="stat-pagos">0 cobros realizados</p>
+          </div>
+          <div class="stat-card cursor-pointer hover:border-red-200 transition-colors" id="card-deudores-count" onclick="switchView('deudores')">
+            <p class="text-sm text-slate-500 font-medium">Deudores activos</p>
+            <p class="text-3xl font-bold text-red-500 mt-2" id="stat-deudores">0</p>
+            <p class="text-xs text-slate-400 mt-1">Membresías vencidas</p>
+          </div>
+          <div class="stat-card cursor-pointer hover:border-indigo-200 transition-colors" onclick="switchView('cobrar-cuota')">
+            <p class="text-sm text-slate-500 font-medium">Acción rápida</p>
+            <p class="text-lg font-semibold text-indigo-600 mt-2">Cobrar cuota</p>
+            <p class="text-xs text-slate-400 mt-1">Registrar un nuevo pago</p>
+          </div>
+        </div>
+
+        <!-- Últimos deudores -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100">
+          <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <h2 class="font-semibold text-slate-800">Deudores recientes</h2>
+            <button class="text-sm text-indigo-600 hover:underline" onclick="switchView('deudores')">Ver todos →</button>
+          </div>
+          <div id="dashboard-deudores-list" class="divide-y divide-slate-50">
+            <p class="text-center text-slate-400 text-sm py-8">Cargando...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── VIEW: Nuevo Socio ──────────────────────────────────────────── -->
+      <div id="view-nuevo-socio" class="view p-8">
+        <div class="mb-8">
+          <h1 class="text-2xl font-bold text-slate-800">Nuevo Socio</h1>
+          <p class="text-slate-500 text-sm mt-1">Registrar un nuevo miembro en el sistema</p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 max-w-lg">
+          <div class="p-6">
+            <form id="form-nuevo-socio" class="space-y-4">
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="form-label">Nombre <span class="text-red-500">*</span></label>
+                  <input type="text" id="ns-nombre" class="form-input" placeholder="Juan" required />
+                </div>
+                <div>
+                  <label class="form-label">Apellido <span class="text-red-500">*</span></label>
+                  <input type="text" id="ns-apellido" class="form-input" placeholder="García" required />
+                </div>
+              </div>
+              <div>
+                <label class="form-label">DNI <span class="text-red-500">*</span></label>
+                <input type="text" id="ns-dni" class="form-input" placeholder="12345678" maxlength="8" pattern="\d{6,8}" required />
+              </div>
+              <div>
+                <label class="form-label">Teléfono</label>
+                <input type="text" id="ns-telefono" class="form-input" placeholder="3584123456 (sin 0 ni 15)" />
+                <p class="text-xs text-slate-400 mt-1">Ingresá el número sin 0 ni 15 para el link de WhatsApp</p>
+              </div>
+              <div id="ns-error" class="hidden text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg"></div>
+              <div class="flex gap-3 pt-2">
+                <button type="submit" class="btn-primary" id="ns-submit">Registrar Socio</button>
+                <button type="button" class="btn-secondary" onclick="resetNuevoSocio()">Limpiar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── VIEW: Cobrar Cuota ─────────────────────────────────────────── -->
+      <div id="view-cobrar-cuota" class="view p-8">
+        <div class="mb-8">
+          <h1 class="text-2xl font-bold text-slate-800">Cobrar Cuota</h1>
+          <p class="text-slate-500 text-sm mt-1">Registrar el pago de una membresía</p>
+        </div>
+
+        <div class="max-w-lg space-y-5">
+
+          <!-- Paso 1: Buscar socio -->
+          <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+            <h2 class="font-semibold text-slate-700 mb-4 text-sm uppercase tracking-wide">1. Identificar Socio</h2>
+            <div class="flex gap-3">
+              <input type="text" id="cc-dni" class="form-input flex-1" placeholder="DNI del socio" maxlength="8" />
+              <button class="btn-primary" onclick="buscarSocioParaCobro()">Buscar</button>
+            </div>
+            <div id="cc-socio-card" class="hidden mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="font-semibold text-slate-800" id="cc-socio-nombre"></p>
+                  <p class="text-sm text-slate-500">DNI: <span id="cc-socio-dni"></span></p>
+                </div>
+                <span id="cc-socio-badge"></span>
+              </div>
+              <p class="text-xs text-slate-400 mt-2" id="cc-socio-venc"></p>
+            </div>
+            <div id="cc-error" class="hidden mt-3 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg"></div>
+          </div>
+
+          <!-- Paso 2: Formulario de pago -->
+          <div id="cc-form-pago" class="hidden bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+            <h2 class="font-semibold text-slate-700 mb-4 text-sm uppercase tracking-wide">2. Registrar Pago</h2>
+            <form id="form-cobrar-cuota" class="space-y-4">
+              <input type="hidden" id="cc-socio-id" />
+              <div>
+                <label class="form-label">Membresía <span class="text-red-500">*</span></label>
+                <select id="cc-membresia" class="form-input" onchange="onMembresiaChange()">
+                  <option value="">Seleccionar...</option>
+                </select>
+              </div>
+              <div>
+                <label class="form-label">Monto ($) <span class="text-red-500">*</span></label>
+                <input type="number" id="cc-monto" class="form-input" placeholder="10000" min="0" required />
+                <p class="text-xs text-slate-400 mt-1">El precio se carga automáticamente. Podés modificarlo.</p>
+              </div>
+              <div>
+                <label class="form-label">Método de Pago <span class="text-red-500">*</span></label>
+                <div class="grid grid-cols-2 gap-3">
+                  <label class="flex items-center gap-2 p-3 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50 has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50">
+                    <input type="radio" name="cc-metodo" value="Efectivo" checked />
+                    <span class="text-sm font-medium">Efectivo</span>
+                  </label>
+                  <label class="flex items-center gap-2 p-3 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50 has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50">
+                    <input type="radio" name="cc-metodo" value="Transferencia" />
+                    <span class="text-sm font-medium">Transferencia</span>
+                  </label>
+                </div>
+              </div>
+              <div id="cc-pago-error" class="hidden text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg"></div>
+              <button type="submit" class="btn-green w-full" id="cc-submit">Registrar Pago</button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── VIEW: Deudores ─────────────────────────────────────────────── -->
+      <div id="view-deudores" class="view p-8">
+        <div class="mb-8 flex items-center justify-between">
+          <div>
+            <h1 class="text-2xl font-bold text-slate-800">Deudores</h1>
+            <p class="text-slate-500 text-sm mt-1">Socios con membresía vencida</p>
+          </div>
+          <button class="btn-primary" onclick="loadDeudores()">Actualizar</button>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 border-b border-slate-100">
+              <tr>
+                <th class="text-left px-6 py-3 font-semibold text-slate-600">Socio</th>
+                <th class="text-left px-6 py-3 font-semibold text-slate-600">DNI</th>
+                <th class="text-left px-6 py-3 font-semibold text-slate-600">Vencimiento</th>
+                <th class="text-left px-6 py-3 font-semibold text-slate-600">Teléfono</th>
+                <th class="text-left px-6 py-3 font-semibold text-slate-600">Acción</th>
+              </tr>
+            </thead>
+            <tbody id="deudores-tbody">
+              <tr><td colspan="5" class="text-center text-slate-400 py-12">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+      <!-- ── VIEW: Reportes y Backup ──────────────────────────────────── -->
+      <div id="view-reportes" class="view p-8">
+        <div class="mb-8">
+          <h1 class="text-2xl font-bold text-slate-800">Reportes y Backup</h1>
+          <p class="text-slate-500 text-sm mt-1">Exportar datos y gestionar copias de seguridad</p>
+        </div>
+
+        <div class="max-w-xl space-y-5">
+
+          <!-- Excel -->
+          <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+            <div class="flex items-start gap-4">
+              <div class="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <svg class="w-5 h-5 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+              </div>
+              <div class="flex-1">
+                <h2 class="font-semibold text-slate-800">Generar Reporte Excel</h2>
+                <p class="text-sm text-slate-500 mt-1">Crea un archivo <code class="bg-slate-100 px-1 rounded">.xlsx</code> con tres pestañas: <strong>Caja de Hoy</strong>, <strong>Asistencias de Hoy</strong> y <strong>Lista de Deudores</strong>.</p>
+                <button class="btn-green mt-4" id="btn-excel" onclick="generarExcel()">
+                  Generar Reporte Excel
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Backup -->
+          <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+            <div class="flex items-start gap-4">
+              <div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <svg class="w-5 h-5 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+              </div>
+              <div class="flex-1">
+                <h2 class="font-semibold text-slate-800">Crear Backup de Seguridad</h2>
+                <p class="text-sm text-slate-500 mt-1">Copia el archivo de base de datos (<code class="bg-slate-100 px-1 rounded">.sqlite</code>) directamente a la carpeta que elijas (pendrive, escritorio, etc.).</p>
+                <button class="btn-primary mt-4" id="btn-backup" onclick="crearBackup()">
+                  Crear Backup de Seguridad
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Restaurar -->
+          <div class="bg-white rounded-xl shadow-sm border border-red-100 p-6">
+            <div class="flex items-start gap-4">
+              <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <svg class="w-5 h-5 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              </div>
+              <div class="flex-1">
+                <h2 class="font-semibold text-slate-800">Restaurar Base de Datos</h2>
+                <p class="text-sm text-slate-500 mt-1">Reemplaza la base de datos actual con un backup anterior. <span class="text-red-600 font-medium">La app se reiniciará automáticamente.</span></p>
+                <div class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                  ⚠ Esta acción reemplaza todos los datos actuales con los del backup. No se puede deshacer.
+                </div>
+                <button class="mt-4 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors" id="btn-restaurar" onclick="restaurarBD()">
+                  Restaurar Base de Datos
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+  <!-- Toast de notificaciones -->
+  <div id="toast" class="toast hidden">
+    <div class="flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white" id="toast-inner">
+      <span id="toast-icon"></span>
+      <span id="toast-msg"></span>
+    </div>
+  </div>
+
+  <script src="admin.js"></script>
 </body>
 </html>

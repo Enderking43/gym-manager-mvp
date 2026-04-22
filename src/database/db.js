@@ -119,4 +119,6 @@ function seedMemberships() {
   console.log('Membresías semilla insertadas.');
 }
 
-module.exports = { initializeDatabase, saveDatabase, dbGet, dbAll, dbRun };
+function getDbFilePath() { return dbFilePath; }
+
+module.exports = { initializeDatabase, saveDatabase, dbGet, dbAll, dbRun, getDbFilePath };

@@ -1,5 +1,7 @@
-const { ipcMain } = require('electron');
-const { dbGet, dbAll, dbRun, saveDatabase } = require('../database/db');
+const { ipcMain, dialog, app } = require('electron');
+const path = require('path');
+const fs   = require('fs');
+const { dbGet, dbAll, dbRun, saveDatabase, getDbFilePath } = require('../database/db');
 
 // Fecha local hoy → YYYY-MM-DD
 function getToday() {
@@ -161,6 +163,35 @@ function registerHandlers() {
     }
   });
 
+  // ── BUSCAR SOCIO (ADMIN) ────────────────────────────────────────────────
+  // Sin efectos secundarios: no modifica estado_aviso. Solo para el panel admin.
+  ipcMain.handle('buscar-socio-admin', (_event, dni) => {
+    try {
+      const socio = dbGet('SELECT * FROM socios WHERE dni = ?', [String(dni).trim()]);
+      if (!socio) return { success: false, error: 'Socio no encontrado' };
+
+      const lastPago = dbGet(`
+        SELECT p.*, m.nombre AS membresia_nombre
+        FROM   pagos p
+        JOIN   membresias m ON m.id = p.membresia_id
+        WHERE  p.socio_id = ?
+        ORDER  BY p.fecha_vencimiento DESC
+        LIMIT  1
+      `, [socio.id]);
+
+      const today = getToday();
+      let estadoMembresia = 'sin_membresia';
+      if (lastPago) {
+        estadoMembresia = lastPago.fecha_vencimiento >= today ? 'vigente' : 'vencida';
+      }
+
+      return { success: true, socio, lastPago, estadoMembresia };
+    } catch (err) {
+      console.error('[buscar-socio-admin]', err);
+      return { success: false, error: err.message };
+    }
+  });
+
   // ── OBTENER MEMBRESÍAS ──────────────────────────────────────────────────
   ipcMain.handle('obtener-membresias', () => {
     try {
@@ -171,6 +202,174 @@ function registerHandlers() {
       return { success: false, error: err.message };
     }
   });
+
+  // ── GENERAR REPORTE EXCEL ───────────────────────────────────────────────
+  ipcMain.handle('generar-reporte-excel', async () => {
+    try {
+      const today = getToday();
+
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: 'Guardar Reporte Excel',
+        defaultPath: `Reporte_Gimnasio_${today}.xlsx`,
+        filters: [{ name: 'Excel', extensions: ['xlsx'] }],
+      });
+      if (canceled || !filePath) return { success: false, canceled: true };
+
+      const ExcelJS = require('exceljs');
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'Gimnasio MVP';
+      wb.created = new Date();
+
+      // ── Pestaña 1: Caja de Hoy ──────────────────────────────────────────
+      const wsCaja = wb.addWorksheet('Caja de Hoy');
+      wsCaja.columns = [
+        { header: 'Socio',          key: 'socio',     width: 24 },
+        { header: 'DNI',            key: 'dni',       width: 12 },
+        { header: 'Membresía',      key: 'membresia', width: 16 },
+        { header: 'Monto ($)',      key: 'monto',     width: 14 },
+        { header: 'Método',         key: 'metodo',    width: 16 },
+        { header: 'Vencimiento',    key: 'venc',      width: 16 },
+      ];
+      styleHeader(wsCaja);
+
+      const pagosHoy = dbAll(`
+        SELECT s.nombre || ' ' || s.apellido AS socio,
+               s.dni, m.nombre AS membresia,
+               p.monto, p.metodo_pago, p.fecha_vencimiento
+        FROM   pagos p
+        JOIN   socios     s ON s.id = p.socio_id
+        JOIN   membresias m ON m.id = p.membresia_id
+        WHERE  p.fecha_pago = ?
+        ORDER  BY p.id DESC
+      `, [today]);
+
+      pagosHoy.forEach(r => wsCaja.addRow({
+        socio: r.socio, dni: r.dni, membresia: r.membresia,
+        monto: r.monto, metodo: r.metodo_pago, venc: r.fecha_vencimiento,
+      }));
+
+      const totalRow = wsCaja.addRow({ socio: 'TOTAL', monto: pagosHoy.reduce((s, r) => s + r.monto, 0) });
+      totalRow.font = { bold: true };
+
+      // ── Pestaña 2: Asistencias de Hoy ──────────────────────────────────
+      const wsAsist = wb.addWorksheet('Asistencias de Hoy');
+      wsAsist.columns = [
+        { header: 'Socio',         key: 'socio',  width: 24 },
+        { header: 'DNI',           key: 'dni',    width: 12 },
+        { header: 'Hora Entrada',  key: 'hora',   width: 20 },
+      ];
+      styleHeader(wsAsist);
+
+      const asistHoy = dbAll(`
+        SELECT s.nombre || ' ' || s.apellido AS socio,
+               s.dni, a.fecha_entrada
+        FROM   asistencias a
+        JOIN   socios s ON s.id = a.socio_id
+        WHERE  date(a.fecha_entrada) = ?
+        ORDER  BY a.id ASC
+      `, [today]);
+
+      asistHoy.forEach(r => wsAsist.addRow({
+        socio: r.socio, dni: r.dni, hora: r.fecha_entrada,
+      }));
+
+      // ── Pestaña 3: Lista de Deudores ────────────────────────────────────
+      const wsDeud = wb.addWorksheet('Lista de Deudores');
+      wsDeud.columns = [
+        { header: 'Nombre',          key: 'nombre',   width: 18 },
+        { header: 'Apellido',        key: 'apellido', width: 18 },
+        { header: 'DNI',             key: 'dni',      width: 12 },
+        { header: 'Teléfono',        key: 'telefono', width: 16 },
+        { header: 'Último Venc.',    key: 'venc',     width: 16 },
+        { header: 'Días Vencido',    key: 'dias',     width: 14 },
+      ];
+      styleHeader(wsDeud);
+
+      const deudores = dbAll(`
+        SELECT s.nombre, s.apellido, s.dni, s.telefono,
+               MAX(p.fecha_vencimiento) AS ultimo_vencimiento
+        FROM   socios s
+        LEFT JOIN pagos p ON p.socio_id = s.id
+        GROUP  BY s.id
+        HAVING ultimo_vencimiento < ? OR ultimo_vencimiento IS NULL
+        ORDER  BY ultimo_vencimiento ASC
+      `, [today]);
+
+      deudores.forEach(r => {
+        const dias = r.ultimo_vencimiento
+          ? Math.round((new Date(today) - new Date(r.ultimo_vencimiento)) / 86400000)
+          : null;
+        wsDeud.addRow({
+          nombre: r.nombre, apellido: r.apellido, dni: r.dni,
+          telefono: r.telefono || '', venc: r.ultimo_vencimiento || 'Sin membresía',
+          dias: dias !== null ? dias : '—',
+        });
+      });
+
+      await wb.xlsx.writeFile(filePath);
+      return { success: true, filePath };
+
+    } catch (err) {
+      console.error('[generar-reporte-excel]', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // ── CREAR BACKUP ────────────────────────────────────────────────────────
+  ipcMain.handle('crear-backup', async () => {
+    try {
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        title: 'Seleccionar carpeta de destino (pendrive)',
+        properties: ['openDirectory'],
+      });
+      if (canceled || !filePaths.length) return { success: false, canceled: true };
+
+      const today   = getToday();
+      const destDir = filePaths[0];
+      const destFile = path.join(destDir, `backup_gimnasio_${today}.sqlite`);
+
+      // Guardar estado actual antes de copiar (por si hay datos no persistidos)
+      saveDatabase();
+      fs.copyFileSync(getDbFilePath(), destFile);
+
+      return { success: true, destFile };
+    } catch (err) {
+      console.error('[crear-backup]', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // ── RESTAURAR BASE DE DATOS ─────────────────────────────────────────────
+  ipcMain.handle('restaurar-base-datos', async () => {
+    try {
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        title: 'Seleccionar archivo de backup (.sqlite)',
+        filters: [{ name: 'Base de datos SQLite', extensions: ['sqlite'] }],
+        properties: ['openFile'],
+      });
+      if (canceled || !filePaths.length) return { success: false, canceled: true };
+
+      fs.copyFileSync(filePaths[0], getDbFilePath());
+
+      // Reiniciar la app para que cargue la DB restaurada
+      app.relaunch();
+      app.exit(0);
+      return { success: true };
+
+    } catch (err) {
+      console.error('[restaurar-base-datos]', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+}
+
+// Aplica estilo de encabezado bold + fondo gris a la primera fila de una hoja
+function styleHeader(worksheet) {
+  const headerRow = worksheet.getRow(1);
+  headerRow.font = { bold: true };
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+  headerRow.commit();
 }
 
 module.exports = { registerHandlers };

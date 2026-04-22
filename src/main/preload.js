@@ -8,6 +8,10 @@ const ALLOWED_CHANNELS = [
   'registrar-pago',
   'obtener-dashboard',
   'obtener-membresias',
+  'buscar-socio-admin',
+  'generar-reporte-excel',
+  'crear-backup',
+  'restaurar-base-datos',
 ];
 
 contextBridge.exposeInMainWorld('api', {
