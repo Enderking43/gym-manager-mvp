@@ -42,12 +42,19 @@
   <!-- ── Capa oscura semi-transparente para legibilidad ────────────────── -->
   <div class="absolute inset-0 bg-black/55"></div>
 
+  <!-- Logo del gimnasio (esquina superior derecha, dinámico) -->
+  <div class="absolute top-6 right-6 z-20">
+    <img id="kiosk-logo"
+         class="hidden h-32 w-auto object-contain opacity-50"
+         src="" alt="Logo" />
+  </div>
+
   <!-- ── Contenido principal ───────────────────────────────────────────── -->
   <div class="relative z-10 flex flex-col h-full">
 
     <!-- Encabezado: nombre del gimnasio -->
     <header class="pt-8 pb-2 text-center">
-      <h1 class="text-3xl font-black tracking-[0.3em] uppercase text-white/90 drop-shadow-lg">
+      <h1 id="kiosk-gym-title" class="text-3xl font-black tracking-[0.3em] uppercase text-white/90 drop-shadow-lg">
         GIMNASIO MVP
       </h1>
       <div class="mt-1 mx-auto w-24 h-0.5 bg-white/30 rounded-full"></div>

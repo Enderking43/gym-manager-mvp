@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm start *)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"require\\('./src/database/db'\\); console.log\\('db.js OK'\\)\")",
+      "Bash(node -e \"const p = require\\('./package.json'\\); console.log\\('appId:', p.build.appId\\); console.log\\('scripts.build:', p.scripts.build\\); console.log\\('extraResources:', JSON.stringify\\(p.build.extraResources\\)\\); console.log\\('better-sqlite3 in devDeps:', !!p.devDependencies['better-sqlite3']\\); console.log\\('better-sqlite3 in deps:', !!p.dependencies['better-sqlite3']\\);\")",
+      "Bash(npm run *)"
+    ]
+  }
+}

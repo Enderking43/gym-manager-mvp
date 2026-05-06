@@ -1,12 +1,12 @@
-const path = require('path');
-const fs   = require('fs');
+const path     = require('path');
+const fs       = require('fs');
+const { app }  = require('electron');
 
-let db;          // instancia sql.js Database
-let dbFilePath;  // ruta al archivo .sqlite en disco
+let db;
+let dbFilePath;
 
 // ── Helpers síncronos sobre la API de sql.js ──────────────────────────────
 
-// SELECT → una fila (o null)
 function dbGet(sql, params = []) {
   const stmt = db.prepare(sql);
   stmt.bind(params);
@@ -15,7 +15,6 @@ function dbGet(sql, params = []) {
   return row;
 }
 
-// SELECT → array de filas
 function dbAll(sql, params = []) {
   const stmt = db.prepare(sql);
   stmt.bind(params);
@@ -25,7 +24,6 @@ function dbAll(sql, params = []) {
   return rows;
 }
 
-// INSERT / UPDATE / DELETE → { lastInsertRowid, changes }
 function dbRun(sql, params = []) {
   db.run(sql, params);
   const lastInsertRowid =
@@ -34,37 +32,35 @@ function dbRun(sql, params = []) {
   return { lastInsertRowid, changes };
 }
 
-// Serializa la DB en memoria al archivo en disco (llamar tras cada escritura)
 function saveDatabase() {
-  const data = db.export();           // Uint8Array
+  const data = db.export();
   fs.writeFileSync(dbFilePath, Buffer.from(data));
 }
 
-// ── Inicialización (async solo por la carga del WASM) ─────────────────────
+// ── Inicialización ────────────────────────────────────────────────────────
 async function initializeDatabase(userDataPath) {
   const initSqlJs = require('sql.js');
 
-  // Localiza el .wasm dentro de node_modules para que Electron lo encuentre
-  const wasmPath = path.join(
-    __dirname, '..', '..', 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'
-  );
-  const SQL = await initSqlJs({
-    locateFile: () => wasmPath,
-  });
+  // En producción el .wasm vive en Resources/ (extraResources de electron-builder).
+  // En desarrollo está en node_modules/sql.js/dist/.
+  const wasmPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'sql-wasm.wasm')
+    : path.join(__dirname, '..', '..', 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm');
+
+  const SQL = await initSqlJs({ locateFile: () => wasmPath });
 
   dbFilePath = path.join(userDataPath, 'gym_database.sqlite');
 
-  // Si ya existe un archivo, lo carga; si no, crea una DB nueva vacía
-  const fileBuffer = fs.existsSync(dbFilePath)
-    ? fs.readFileSync(dbFilePath)
-    : null;
-
+  const fileBuffer = fs.existsSync(dbFilePath) ? fs.readFileSync(dbFilePath) : null;
   db = new SQL.Database(fileBuffer);
   db.run('PRAGMA foreign_keys = ON');
 
   createTables();
+  runMigrations();       // agrega columnas nuevas a tablas existentes de forma segura
   seedMemberships();
-  saveDatabase(); // primer guardado (crea el archivo si es nuevo)
+  seedConfiguration();
+  seedUsuarios();
+  saveDatabase();
 
   console.log(`Base de datos lista en: ${dbFilePath}`);
 }
@@ -104,19 +100,93 @@ function createTables() {
       fecha_entrada TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
       FOREIGN KEY (socio_id) REFERENCES socios(id)
     );
+    CREATE TABLE IF NOT EXISTS configuracion (
+      id             INTEGER PRIMARY KEY CHECK (id = 1),
+      nombre_gym     TEXT,
+      color_primario TEXT,
+      logo_base64    TEXT
+    );
+    CREATE TABLE IF NOT EXISTS usuarios (
+      id      INTEGER PRIMARY KEY AUTOINCREMENT,
+      nombre  TEXT    NOT NULL UNIQUE,
+      clave   TEXT    NOT NULL,
+      rol     TEXT    NOT NULL CHECK(rol IN ('admin', 'empleado'))
+    );
+    CREATE TABLE IF NOT EXISTS articulos (
+      id      INTEGER PRIMARY KEY AUTOINCREMENT,
+      nombre  TEXT    NOT NULL,
+      precio  REAL    NOT NULL,
+      stock   INTEGER NOT NULL DEFAULT 0,
+      estado  TEXT    DEFAULT 'Activo'
+    );
+    CREATE TABLE IF NOT EXISTS ventas_articulos (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      articulo_id      INTEGER NOT NULL,
+      cantidad         INTEGER NOT NULL,
+      precio_unitario  REAL    NOT NULL,
+      total            REAL    NOT NULL,
+      fecha            TEXT    DEFAULT (datetime('now','localtime')),
+      usuario_id       INTEGER,
+      FOREIGN KEY (articulo_id) REFERENCES articulos(id),
+      FOREIGN KEY (usuario_id)  REFERENCES usuarios(id)
+    );
+    CREATE TABLE IF NOT EXISTS egresos (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      concepto   TEXT    NOT NULL,
+      monto      REAL    NOT NULL,
+      fecha      TEXT    NOT NULL DEFAULT (date('now')),
+      usuario_id INTEGER,
+      FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+    );
+    CREATE TABLE IF NOT EXISTS grupos_familiares (
+      id     INTEGER PRIMARY KEY AUTOINCREMENT,
+      nombre TEXT    NOT NULL
+    );
   `);
 }
 
+// Agrega una columna solo si no existe (migración segura con PRAGMA table_info)
+function runSafeMigration(table, column, definition) {
+  const cols = dbAll(`PRAGMA table_info(${table})`);
+  if (!cols.some(c => c.name === column)) {
+    db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    console.log(`Migración: ${table}.${column} agregada`);
+  }
+}
+
+function runMigrations() {
+  // Fase 7: columnas extendidas de socios (CRM)
+  runSafeMigration('socios', 'email',           'TEXT');
+  runSafeMigration('socios', 'domicilio',        'TEXT');
+  runSafeMigration('socios', 'fecha_nacimiento', 'TEXT');
+  runSafeMigration('socios', 'genero',           'TEXT');
+
+  // Fase 7: columnas de facturación y auditoría en pagos
+  runSafeMigration('pagos', 'usuario_id',  'INTEGER');
+  runSafeMigration('pagos', 'tipo_cobro',  "TEXT DEFAULT 'Membresia'");
+  runSafeMigration('pagos', 'descripcion', 'TEXT');
+
+  // Fase 10: estado en membresías (soft delete) y grupo familiar en socios
+  runSafeMigration('membresias', 'estado',   "TEXT DEFAULT 'Activo'");
+  runSafeMigration('socios',     'grupo_id', 'INTEGER');
+}
+
 function seedMemberships() {
-  const row = dbGet('SELECT COUNT(*) as count FROM membresias');
-  if (row && row.count > 0) return;
+  // INSERT OR IGNORE con IDs explícitos garantiza idempotencia
+  db.run(`INSERT OR IGNORE INTO membresias (id, nombre, duracion_dias, precio) VALUES (1, 'Mensual', 31, 10000)`);
+  db.run(`INSERT OR IGNORE INTO membresias (id, nombre, duracion_dias, precio) VALUES (2, 'Semestral', 186, 50000)`);
+  db.run(`INSERT OR IGNORE INTO membresias (id, nombre, duracion_dias, precio) VALUES (3, 'Pase Diario', 1, 0)`);
+}
 
-  db.run('INSERT INTO membresias (nombre, duracion_dias, precio) VALUES (?,?,?)',
-    ['Mensual', 31, 10000]);
-  db.run('INSERT INTO membresias (nombre, duracion_dias, precio) VALUES (?,?,?)',
-    ['Semestral', 186, 50000]);
+function seedConfiguration() {
+  db.run(`
+    INSERT OR IGNORE INTO configuracion (id, nombre_gym, color_primario, logo_base64)
+    VALUES (1, 'Gimnasio Local', '#EAB308', '')
+  `);
+}
 
-  console.log('Membresías semilla insertadas.');
+function seedUsuarios() {
+  db.run(`INSERT OR IGNORE INTO usuarios (id, nombre, clave, rol) VALUES (1, 'admin', '1234', 'admin')`);
 }
 
 function getDbFilePath() { return dbFilePath; }

@@ -5,16 +5,41 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Administrador — Gimnasio MVP</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <style>
+    :root { --color-primario: #EAB308; }
+
     body { font-family: 'Inter', system-ui, sans-serif; }
-    .nav-item { @apply flex items-center gap-3 px-4 py-3 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white cursor-pointer transition-all text-sm font-medium; }
-    .nav-item.active { @apply bg-indigo-600 text-white; }
+
+    .btn-primary {
+      display: inline-flex; align-items: center;
+      padding: 0.5rem 1rem;
+      background-color: var(--color-primario);
+      color: white; font-size: 0.875rem; font-weight: 500;
+      border-radius: 0.5rem; transition: filter 0.15s;
+      cursor: pointer; border: none;
+    }
+    .btn-primary:hover:not(:disabled) { filter: brightness(0.88); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary.w-full { justify-content: center; }
+
+    .nav-item {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.75rem 1rem; border-radius: 0.5rem;
+      color: rgb(203 213 225); font-size: 0.875rem; font-weight: 500;
+      cursor: pointer; transition: all 0.15s; width: 100%;
+      background: transparent; border: none; text-align: left;
+    }
+    .nav-item:hover { background: rgb(51 65 85); color: white; }
+    .nav-item.active { background-color: var(--color-primario); color: white; }
+
     .view { display: none; }
     .view.active { display: block; }
+
     .stat-card { @apply bg-white rounded-xl p-6 shadow-sm border border-slate-100; }
     .form-label { @apply block text-sm font-medium text-slate-700 mb-1; }
-    .form-input { @apply w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent; }
-    .btn-primary { @apply px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed; }
+    .form-input { @apply w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-transparent; }
+    .form-input:focus { outline: 2px solid var(--color-primario); outline-offset: 0; border-color: var(--color-primario); }
     .btn-secondary { @apply px-4 py-2 bg-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-300 transition-colors; }
     .btn-green { @apply px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors; }
     .badge-vigente { @apply inline-block px-2 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-800 rounded-full; }
@@ -25,90 +50,210 @@
 </head>
 <body class="bg-slate-100 h-screen overflow-hidden">
 
+  <!-- ── Login Overlay ──────────────────────────────────────────────────── -->
+  <div id="login-overlay" class="fixed inset-0 z-50 bg-slate-900 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm mx-4">
+      <div class="text-center mb-6">
+        <div id="login-logo-wrap" class="hidden mb-3">
+          <img id="login-logo-img" class="h-16 w-auto object-contain mx-auto rounded-xl" src="" alt="Logo" />
+        </div>
+        <div id="login-logo-placeholder"
+             class="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-white text-2xl font-bold mb-3"
+             style="background-color: var(--color-primario)">G</div>
+        <h1 class="text-xl font-bold text-slate-800" id="login-gym-name">Gimnasio Local</h1>
+        <p class="text-sm text-slate-500 mt-1">Acceso de Personal</p>
+      </div>
+      <form id="form-login" class="space-y-4">
+        <div>
+          <label class="form-label">Usuario</label>
+          <input type="text" id="login-usuario" class="form-input" placeholder="admin" autocomplete="username" />
+        </div>
+        <div>
+          <label class="form-label">Clave / PIN</label>
+          <input type="password" id="login-clave" class="form-input" placeholder="••••" autocomplete="current-password" />
+        </div>
+        <div id="login-error" class="hidden text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg"></div>
+        <button type="submit" class="btn-primary w-full" id="login-submit">Ingresar</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Layout principal (oculto hasta el login) ────────────────────────── -->
+  <div id="main-layout" class="hidden h-screen" style="display:none">
   <div class="flex h-screen">
 
     <!-- ── Sidebar ──────────────────────────────────────────────────────── -->
     <aside class="w-60 bg-slate-900 flex flex-col flex-shrink-0">
 
-      <!-- Logo -->
+      <!-- Logo y nombre -->
       <div class="px-5 py-6 border-b border-slate-700">
         <div class="flex items-center gap-2">
-          <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-lg">G</div>
+          <div id="sidebar-logo-img" class="hidden">
+            <img id="sidebar-logo" class="w-8 h-8 rounded-lg object-cover" src="" alt="Logo" />
+          </div>
+          <div id="sidebar-logo-placeholder"
+               class="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-lg"
+               style="background-color: var(--color-primario)">G</div>
           <div>
-            <p class="text-white font-semibold text-sm leading-none">Gimnasio MVP</p>
+            <p class="text-white font-semibold text-sm leading-none" id="sidebar-gym-name">Gimnasio Local</p>
             <p class="text-slate-400 text-xs mt-0.5">Panel Admin</p>
           </div>
         </div>
       </div>
 
       <!-- Nav -->
-      <nav class="flex-1 px-3 py-4 space-y-1">
-        <button class="nav-item w-full active" data-view="dashboard">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+      <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <button class="nav-item active" data-view="dashboard">
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
           Dashboard
         </button>
-        <button class="nav-item w-full" data-view="nuevo-socio">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
+        <button class="nav-item" data-view="nuevo-socio">
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
           Nuevo Socio
         </button>
-        <button class="nav-item w-full" data-view="cobrar-cuota">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+        <button class="nav-item" data-view="cobrar-cuota">
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
           Cobrar Cuota
         </button>
-        <button class="nav-item w-full" data-view="deudores">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        <button class="nav-item" data-view="deudores">
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
           Deudores
         </button>
-        <button class="nav-item w-full" data-view="reportes">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        <button class="nav-item" data-view="caja">
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+          Caja y Movimientos
+        </button>
+        <button class="nav-item" data-view="reportes" data-admin-only>
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
           Reportes
+        </button>
+        <button class="nav-item" data-view="configuracion" data-admin-only>
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          Configuración
+        </button>
+        <div class="mx-1 my-2 border-t border-slate-700 opacity-40"></div>
+        <button class="nav-item" data-view="punto-de-venta">
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4 20h16a2 2 0 002-2V8a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+          Punto de Venta
+        </button>
+        <button class="nav-item" data-view="inventario" data-admin-only>
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+          Inventario Buffet
+        </button>
+        <button class="nav-item" data-view="gastos" data-admin-only>
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Gastos
+        </button>
+        <button class="nav-item" data-view="grupos" data-admin-only>
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          Grupos Familiares
         </button>
       </nav>
 
-      <!-- Footer con fecha -->
+      <!-- Footer del sidebar: fecha + usuario -->
       <div class="px-5 py-4 border-t border-slate-700">
-        <p class="text-slate-400 text-xs" id="sidebar-date"></p>
+        <p class="text-slate-400 text-xs mb-2" id="sidebar-date"></p>
+        <div class="flex items-center justify-between">
+          <div class="min-w-0">
+            <p class="text-white text-xs font-medium truncate" id="sidebar-user-name"></p>
+            <p class="text-slate-500 text-xs" id="sidebar-user-rol"></p>
+          </div>
+          <button onclick="handleLogout()"
+                  class="text-slate-400 hover:text-red-400 text-xs transition-colors ml-2 flex-shrink-0">
+            Salir
+          </button>
+        </div>
       </div>
     </aside>
 
     <!-- ── Contenido Principal ────────────────────────────────────────────── -->
     <main class="flex-1 overflow-y-auto">
 
-      <!-- ── VIEW: Dashboard ───────────────────────────────────────────── -->
+      <!-- ── VIEW: Dashboard ────────────────────────────────────────────── -->
       <div id="view-dashboard" class="view active p-8">
         <div class="mb-8">
           <h1 class="text-2xl font-bold text-slate-800">Dashboard</h1>
           <p class="text-slate-500 text-sm mt-1" id="dashboard-date"></p>
         </div>
 
-        <!-- Stats -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           <div class="stat-card">
-            <p class="text-sm text-slate-500 font-medium">Caja del día</p>
-            <p class="text-3xl font-bold text-emerald-600 mt-2" id="stat-caja">$0</p>
-            <p class="text-xs text-slate-400 mt-1" id="stat-pagos">0 cobros realizados</p>
+            <p class="text-xs text-slate-500 font-semibold uppercase tracking-wide">Total Socios</p>
+            <p class="text-3xl font-bold text-slate-800 mt-2" id="stat-total">—</p>
           </div>
-          <div class="stat-card cursor-pointer hover:border-red-200 transition-colors" id="card-deudores-count" onclick="switchView('deudores')">
-            <p class="text-sm text-slate-500 font-medium">Deudores activos</p>
-            <p class="text-3xl font-bold text-red-500 mt-2" id="stat-deudores">0</p>
-            <p class="text-xs text-slate-400 mt-1">Membresías vencidas</p>
+          <div class="stat-card">
+            <p class="text-xs text-slate-500 font-semibold uppercase tracking-wide">Activos</p>
+            <p class="text-3xl font-bold text-emerald-600 mt-2" id="stat-activos">—</p>
+            <p class="text-xs text-slate-400 mt-1">Membresía vigente</p>
           </div>
-          <div class="stat-card cursor-pointer hover:border-indigo-200 transition-colors" onclick="switchView('cobrar-cuota')">
-            <p class="text-sm text-slate-500 font-medium">Acción rápida</p>
-            <p class="text-lg font-semibold text-indigo-600 mt-2">Cobrar cuota</p>
-            <p class="text-xs text-slate-400 mt-1">Registrar un nuevo pago</p>
+          <div class="stat-card cursor-pointer hover:border-red-200 transition-colors" onclick="switchView('deudores')">
+            <p class="text-xs text-slate-500 font-semibold uppercase tracking-wide">Deudores</p>
+            <p class="text-3xl font-bold text-red-500 mt-2" id="stat-deudores">—</p>
+            <p class="text-xs text-slate-400 mt-1">Ver lista →</p>
+          </div>
+          <div class="stat-card">
+            <p class="text-xs text-slate-500 font-semibold uppercase tracking-wide">Caja Cuotas</p>
+            <p class="text-3xl font-bold text-emerald-600 mt-2" id="stat-caja">—</p>
+            <p class="text-xs text-slate-400 mt-1" id="stat-pagos"></p>
           </div>
         </div>
 
-        <!-- Últimos deudores -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-100">
-          <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h2 class="font-semibold text-slate-800">Deudores recientes</h2>
-            <button class="text-sm text-indigo-600 hover:underline" onclick="switchView('deudores')">Ver todos →</button>
+        <div class="grid grid-cols-3 gap-4 mb-6">
+          <div class="stat-card">
+            <p class="text-xs text-slate-500 font-semibold uppercase tracking-wide">Caja Buffet</p>
+            <p class="text-2xl font-bold text-blue-600 mt-2" id="stat-buffet">—</p>
+            <p class="text-xs text-slate-400 mt-1">Ventas de hoy</p>
           </div>
-          <div id="dashboard-deudores-list" class="divide-y divide-slate-50">
-            <p class="text-center text-slate-400 text-sm py-8">Cargando...</p>
+          <div class="stat-card">
+            <p class="text-xs text-slate-500 font-semibold uppercase tracking-wide">Gastos</p>
+            <p class="text-2xl font-bold text-red-500 mt-2" id="stat-gastos">—</p>
+            <p class="text-xs text-slate-400 mt-1">Egresos de hoy</p>
           </div>
+          <div class="stat-card">
+            <p class="text-xs text-slate-500 font-semibold uppercase tracking-wide">Caja Neta</p>
+            <p class="text-2xl font-bold mt-2" id="stat-neta">—</p>
+            <p class="text-xs text-slate-400 mt-1">(Cuotas + Buffet) − Gastos</p>
+          </div>
+        </div>
+
+        <div id="top-productos-section" class="bg-white rounded-xl shadow-sm border border-slate-100 p-5 mb-6">
+          <h2 class="font-semibold text-slate-800 text-sm mb-3">Top 5 Productos Más Vendidos — Mes Actual</h2>
+          <div id="top-productos-list" class="space-y-2">
+            <p class="text-sm text-slate-400">Sin ventas de buffet este mes.</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 mb-6">
+          <button onclick="switchView('cobrar-cuota')"
+            class="bg-white rounded-xl p-6 shadow-sm border border-slate-100 hover:shadow-md transition-all text-left">
+            <div class="w-10 h-10 rounded-lg flex items-center justify-center mb-3"
+                 style="background-color: color-mix(in srgb, var(--color-primario) 15%, white)">
+              <svg class="w-5 h-5" style="color: var(--color-primario)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+              </svg>
+            </div>
+            <p class="text-lg font-bold text-slate-800">Cobrar Cuota</p>
+            <p class="text-sm text-slate-500 mt-1">Registrar pago o pase diario</p>
+          </button>
+          <button onclick="switchView('nuevo-socio')"
+            class="bg-white rounded-xl p-6 shadow-sm border border-slate-100 hover:shadow-md transition-all text-left">
+            <div class="w-10 h-10 rounded-lg flex items-center justify-center mb-3"
+                 style="background-color: color-mix(in srgb, var(--color-primario) 15%, white)">
+              <svg class="w-5 h-5" style="color: var(--color-primario)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/>
+              </svg>
+            </div>
+            <p class="text-lg font-bold text-slate-800">Nuevo Socio</p>
+            <p class="text-sm text-slate-500 mt-1">Registrar un nuevo miembro</p>
+          </button>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+          <div class="flex items-center justify-between mb-6">
+            <h2 class="font-semibold text-slate-800">Ingresos del Año</h2>
+            <span class="text-xs text-slate-400 bg-slate-50 px-3 py-1 rounded-full" id="chart-year"></span>
+          </div>
+          <canvas id="revenue-chart" height="80"></canvas>
         </div>
       </div>
 
@@ -139,7 +284,30 @@
               <div>
                 <label class="form-label">Teléfono</label>
                 <input type="text" id="ns-telefono" class="form-input" placeholder="3584123456 (sin 0 ni 15)" />
-                <p class="text-xs text-slate-400 mt-1">Ingresá el número sin 0 ni 15 para el link de WhatsApp</p>
+                <p class="text-xs text-slate-400 mt-1">Sin 0 ni 15 para el link de WhatsApp</p>
+              </div>
+              <div>
+                <label class="form-label">Email</label>
+                <input type="email" id="ns-email" class="form-input" placeholder="juan@gmail.com" />
+              </div>
+              <div>
+                <label class="form-label">Domicilio</label>
+                <input type="text" id="ns-domicilio" class="form-input" placeholder="Calle Falsa 123" />
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="form-label">Fecha de Nacimiento</label>
+                  <input type="date" id="ns-fechanac" class="form-input" />
+                </div>
+                <div>
+                  <label class="form-label">Género</label>
+                  <select id="ns-genero" class="form-input">
+                    <option value="">Sin especificar</option>
+                    <option value="Masculino">Masculino</option>
+                    <option value="Femenino">Femenino</option>
+                    <option value="Otro">Otro</option>
+                  </select>
+                </div>
               </div>
               <div id="ns-error" class="hidden text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg"></div>
               <div class="flex gap-3 pt-2">
@@ -155,12 +323,11 @@
       <div id="view-cobrar-cuota" class="view p-8">
         <div class="mb-8">
           <h1 class="text-2xl font-bold text-slate-800">Cobrar Cuota</h1>
-          <p class="text-slate-500 text-sm mt-1">Registrar el pago de una membresía</p>
+          <p class="text-slate-500 text-sm mt-1">Registrar membresías y pases diarios</p>
         </div>
 
         <div class="max-w-lg space-y-5">
-
-          <!-- Paso 1: Buscar socio -->
+          <!-- Paso 1: buscar socio -->
           <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
             <h2 class="font-semibold text-slate-700 mb-4 text-sm uppercase tracking-wide">1. Identificar Socio</h2>
             <div class="flex gap-3">
@@ -168,34 +335,90 @@
               <button class="btn-primary" onclick="buscarSocioParaCobro()">Buscar</button>
             </div>
             <div id="cc-socio-card" class="hidden mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
-              <div class="flex items-center justify-between">
+              <div class="flex items-start justify-between">
                 <div>
-                  <p class="font-semibold text-slate-800" id="cc-socio-nombre"></p>
+                  <div class="flex items-center gap-2">
+                    <p class="font-semibold text-slate-800" id="cc-socio-nombre"></p>
+                    <span class="text-xs text-slate-400" id="cc-socio-edad"></span>
+                  </div>
                   <p class="text-sm text-slate-500">DNI: <span id="cc-socio-dni"></span></p>
                 </div>
-                <span id="cc-socio-badge"></span>
+                <div class="flex items-center gap-2">
+                  <span id="cc-socio-badge"></span>
+                  <button onclick="abrirEditarSocioDesdeCC()"
+                          class="text-xs text-slate-400 hover:text-slate-700 underline transition-colors">
+                    Editar
+                  </button>
+                </div>
               </div>
               <p class="text-xs text-slate-400 mt-2" id="cc-socio-venc"></p>
+              <div id="cc-grupo-badge" class="hidden mt-2">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-violet-100 text-violet-800 rounded-full">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                  <span id="cc-grupo-nombre">Grupo</span>
+                </span>
+              </div>
             </div>
             <div id="cc-error" class="hidden mt-3 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg"></div>
           </div>
 
-          <!-- Paso 2: Formulario de pago -->
+          <!-- Paso 2: tipo + pago -->
           <div id="cc-form-pago" class="hidden bg-white rounded-xl shadow-sm border border-slate-100 p-6">
             <h2 class="font-semibold text-slate-700 mb-4 text-sm uppercase tracking-wide">2. Registrar Pago</h2>
             <form id="form-cobrar-cuota" class="space-y-4">
               <input type="hidden" id="cc-socio-id" />
+
+              <!-- Toggle tipo de cobro -->
               <div>
-                <label class="form-label">Membresía <span class="text-red-500">*</span></label>
-                <select id="cc-membresia" class="form-input" onchange="onMembresiaChange()">
-                  <option value="">Seleccionar...</option>
-                </select>
+                <label class="form-label">Tipo de Cobro</label>
+                <div class="grid grid-cols-2 gap-3">
+                  <label class="flex items-center gap-2 p-3 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50 has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50">
+                    <input type="radio" name="cc-tipo" value="membresia" checked onchange="onCcTipoChange()" />
+                    <span class="text-sm font-medium">Membresía Fija</span>
+                  </label>
+                  <label class="flex items-center gap-2 p-3 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50 has-[:checked]:border-purple-500 has-[:checked]:bg-purple-50">
+                    <input type="radio" name="cc-tipo" value="pase" onchange="onCcTipoChange()" />
+                    <span class="text-sm font-medium">Pase / Clase Suelta</span>
+                  </label>
+                </div>
               </div>
-              <div>
-                <label class="form-label">Monto ($) <span class="text-red-500">*</span></label>
-                <input type="number" id="cc-monto" class="form-input" placeholder="10000" min="0" required />
-                <p class="text-xs text-slate-400 mt-1">El precio se carga automáticamente. Podés modificarlo.</p>
+
+              <!-- Sección membresía (visible por defecto) -->
+              <div id="cc-section-membresia">
+                <div class="space-y-4">
+                  <div>
+                    <label class="form-label">Membresía <span class="text-red-500">*</span></label>
+                    <select id="cc-membresia" class="form-input" onchange="onMembresiaChange()">
+                      <option value="">Seleccionar...</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="form-label">Monto ($) <span class="text-red-500">*</span></label>
+                    <input type="number" id="cc-monto" class="form-input" placeholder="10000" min="0" />
+                    <p class="text-xs text-slate-400 mt-1">El precio se carga automáticamente. Podés modificarlo.</p>
+                  </div>
+                </div>
               </div>
+
+              <!-- Sección pase diario (oculta por defecto) -->
+              <div id="cc-section-pase" class="hidden space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="form-label">Monto ($) <span class="text-red-500">*</span></label>
+                    <input type="number" id="cc-pase-monto" class="form-input" placeholder="2000" min="0" />
+                  </div>
+                  <div>
+                    <label class="form-label">Días de validez</label>
+                    <input type="number" id="cc-pase-dias" class="form-input" value="1" min="1" max="365" />
+                  </div>
+                </div>
+                <div>
+                  <label class="form-label">Descripción</label>
+                  <input type="text" id="cc-pase-desc" class="form-input" placeholder="Ej: Clase de Zumba" />
+                </div>
+              </div>
+
+              <!-- Método de pago (siempre visible) -->
               <div>
                 <label class="form-label">Método de Pago <span class="text-red-500">*</span></label>
                 <div class="grid grid-cols-2 gap-3">
@@ -209,6 +432,7 @@
                   </label>
                 </div>
               </div>
+
               <div id="cc-pago-error" class="hidden text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg"></div>
               <button type="submit" class="btn-green w-full" id="cc-submit">Registrar Pago</button>
             </form>
@@ -244,10 +468,40 @@
         </div>
       </div>
 
-    </main>
-  </div>
+      <!-- ── VIEW: Caja y Movimientos ──────────────────────────────────── -->
+      <div id="view-caja" class="view p-8">
+        <div class="mb-8 flex items-center justify-between">
+          <div>
+            <h1 class="text-2xl font-bold text-slate-800">Caja y Movimientos</h1>
+            <p class="text-slate-500 text-sm mt-1">Historial de los últimos 200 cobros</p>
+          </div>
+          <button class="btn-primary" onclick="loadMovimientos()">Actualizar</button>
+        </div>
 
-      <!-- ── VIEW: Reportes y Backup ──────────────────────────────────── -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 border-b border-slate-100">
+                <tr>
+                  <th class="text-left px-4 py-3 font-semibold text-slate-600">Fecha</th>
+                  <th class="text-left px-4 py-3 font-semibold text-slate-600">Socio</th>
+                  <th class="text-left px-4 py-3 font-semibold text-slate-600">Tipo</th>
+                  <th class="text-left px-4 py-3 font-semibold text-slate-600">Descripción</th>
+                  <th class="text-left px-4 py-3 font-semibold text-slate-600">Monto</th>
+                  <th class="text-left px-4 py-3 font-semibold text-slate-600">Método</th>
+                  <th class="text-left px-4 py-3 font-semibold text-slate-600">Cobró</th>
+                  <th class="text-left px-4 py-3 font-semibold text-slate-600" id="caja-accion-header"></th>
+                </tr>
+              </thead>
+              <tbody id="movimientos-tbody">
+                <tr><td colspan="8" class="text-center text-slate-400 py-12">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── VIEW: Reportes y Backup ────────────────────────────────────── -->
       <div id="view-reportes" class="view p-8">
         <div class="mb-8">
           <h1 class="text-2xl font-bold text-slate-800">Reportes y Backup</h1>
@@ -255,8 +509,6 @@
         </div>
 
         <div class="max-w-xl space-y-5">
-
-          <!-- Excel -->
           <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
             <div class="flex items-start gap-4">
               <div class="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -264,15 +516,12 @@
               </div>
               <div class="flex-1">
                 <h2 class="font-semibold text-slate-800">Generar Reporte Excel</h2>
-                <p class="text-sm text-slate-500 mt-1">Crea un archivo <code class="bg-slate-100 px-1 rounded">.xlsx</code> con tres pestañas: <strong>Caja de Hoy</strong>, <strong>Asistencias de Hoy</strong> y <strong>Lista de Deudores</strong>.</p>
-                <button class="btn-green mt-4" id="btn-excel" onclick="generarExcel()">
-                  Generar Reporte Excel
-                </button>
+                <p class="text-sm text-slate-500 mt-1">Crea un archivo <code class="bg-slate-100 px-1 rounded">.xlsx</code> con tres pestañas: <strong>Caja de Hoy</strong>, <strong>Asistencias</strong> y <strong>Lista de Deudores</strong>. Incluye empleado que cobró, tipo y descripción.</p>
+                <button class="btn-green mt-4" id="btn-excel" onclick="generarExcel()">Generar Reporte Excel</button>
               </div>
             </div>
           </div>
 
-          <!-- Backup -->
           <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
             <div class="flex items-start gap-4">
               <div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -280,15 +529,12 @@
               </div>
               <div class="flex-1">
                 <h2 class="font-semibold text-slate-800">Crear Backup de Seguridad</h2>
-                <p class="text-sm text-slate-500 mt-1">Copia el archivo de base de datos (<code class="bg-slate-100 px-1 rounded">.sqlite</code>) directamente a la carpeta que elijas (pendrive, escritorio, etc.).</p>
-                <button class="btn-primary mt-4" id="btn-backup" onclick="crearBackup()">
-                  Crear Backup de Seguridad
-                </button>
+                <p class="text-sm text-slate-500 mt-1">Copia el archivo de base de datos directamente a la carpeta que elijas (pendrive, escritorio, etc.).</p>
+                <button class="btn-primary mt-4" id="btn-backup" onclick="crearBackup()">Crear Backup</button>
               </div>
             </div>
           </div>
 
-          <!-- Restaurar -->
           <div class="bg-white rounded-xl shadow-sm border border-red-100 p-6">
             <div class="flex items-start gap-4">
               <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -296,9 +542,9 @@
               </div>
               <div class="flex-1">
                 <h2 class="font-semibold text-slate-800">Restaurar Base de Datos</h2>
-                <p class="text-sm text-slate-500 mt-1">Reemplaza la base de datos actual con un backup anterior. <span class="text-red-600 font-medium">La app se reiniciará automáticamente.</span></p>
+                <p class="text-sm text-slate-500 mt-1">Reemplaza la base de datos actual con un backup anterior. <span class="text-red-600 font-medium">La app se reiniciará.</span></p>
                 <div class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-                  ⚠ Esta acción reemplaza todos los datos actuales con los del backup. No se puede deshacer.
+                  Esta acción reemplaza todos los datos actuales con los del backup. No se puede deshacer.
                 </div>
                 <button class="mt-4 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors" id="btn-restaurar" onclick="restaurarBD()">
                   Restaurar Base de Datos
@@ -306,9 +552,500 @@
               </div>
             </div>
           </div>
-
         </div>
       </div>
+
+      <!-- ── VIEW: Configuración ────────────────────────────────────────── -->
+      <div id="view-configuracion" class="view p-8">
+        <div class="mb-8">
+          <h1 class="text-2xl font-bold text-slate-800">Configuración</h1>
+          <p class="text-slate-500 text-sm mt-1">Personalizá la identidad visual y los usuarios del sistema</p>
+        </div>
+
+        <div class="max-w-lg space-y-5">
+          <!-- Marca Blanca -->
+          <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-6 space-y-5">
+            <h2 class="font-semibold text-slate-800">Identidad Visual</h2>
+
+            <div>
+              <label class="form-label">Nombre del Gimnasio</label>
+              <input type="text" id="cfg-nombre" class="form-input" placeholder="Mi Gimnasio" />
+            </div>
+
+            <div>
+              <label class="form-label">Color Principal</label>
+              <div class="flex items-center gap-3">
+                <input type="color" id="cfg-color"
+                       class="w-12 h-10 rounded-lg border border-slate-300 cursor-pointer p-0.5" />
+                <span class="text-sm text-slate-500">Se aplica en botones, barras y elementos de acento</span>
+              </div>
+            </div>
+
+            <div>
+              <label class="form-label">Logo del Gimnasio</label>
+              <div class="space-y-3">
+                <div id="cfg-logo-preview-wrap" class="hidden">
+                  <img id="cfg-logo-preview"
+                       class="h-24 w-24 object-contain rounded-xl border border-slate-200 p-1" src="" alt="Preview" />
+                </div>
+                <div class="flex items-center gap-3">
+                  <label class="btn-secondary cursor-pointer select-none">
+                    Elegir imagen
+                    <input type="file" id="cfg-logo" accept="image/*" class="hidden" />
+                  </label>
+                  <button type="button"
+                          class="text-sm text-red-500 hover:text-red-700 transition-colors"
+                          onclick="clearLogo()">
+                    Quitar logo
+                  </button>
+                </div>
+                <p class="text-xs text-slate-400">JPG, PNG o SVG. Se recomienda imagen con fondo transparente.</p>
+              </div>
+            </div>
+
+            <div class="pt-3 border-t border-slate-100">
+              <button class="btn-primary" id="cfg-save" onclick="saveConfig()">Guardar Cambios</button>
+            </div>
+          </div>
+
+          <!-- Gestión de Membresías (solo admin) -->
+          <div data-admin-only class="bg-white rounded-xl shadow-sm border border-slate-100 p-6 space-y-4">
+            <div>
+              <h2 class="font-semibold text-slate-800">Membresías</h2>
+              <p class="text-sm text-slate-500 mt-1">Creá y administrá los planes disponibles. Las membresías eliminadas no aparecen en el cobrador pero el historial se preserva.</p>
+            </div>
+            <div id="membresias-cfg-list" class="space-y-2 min-h-[2rem]"></div>
+            <div class="border-t border-slate-100 pt-4">
+              <p class="text-sm font-medium text-slate-700 mb-3">Nueva Membresía</p>
+              <form id="form-crear-membresia" class="space-y-3">
+                <div>
+                  <label class="form-label">Nombre <span class="text-red-500">*</span></label>
+                  <input type="text" id="nm-nombre" class="form-input" placeholder="Trimestral, Anual..." autocomplete="off" />
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="form-label">Días <span class="text-red-500">*</span></label>
+                    <input type="number" id="nm-dias" class="form-input" placeholder="31" min="1" />
+                  </div>
+                  <div>
+                    <label class="form-label">Precio ($) <span class="text-red-500">*</span></label>
+                    <input type="number" id="nm-precio" class="form-input" placeholder="10000" min="0" />
+                  </div>
+                </div>
+                <div id="nm-error" class="hidden text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg"></div>
+                <button type="submit" class="btn-primary">Agregar Membresía</button>
+              </form>
+            </div>
+          </div>
+
+          <!-- Gestión de Usuarios (solo admin) -->
+          <div data-admin-only class="bg-white rounded-xl shadow-sm border border-slate-100 p-6 space-y-4">
+            <div>
+              <h2 class="font-semibold text-slate-800">Gestión de Usuarios</h2>
+              <p class="text-sm text-slate-500 mt-1">Creá y administrá cuentas de empleados.</p>
+            </div>
+
+            <div id="usuarios-list" class="space-y-2 min-h-[2rem]"></div>
+
+            <div class="border-t border-slate-100 pt-4">
+              <p class="text-sm font-medium text-slate-700 mb-3">Agregar Empleado</p>
+              <form id="form-crear-usuario" class="space-y-3">
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="form-label">Nombre de usuario</label>
+                    <input type="text" id="nu-nombre" class="form-input" placeholder="empleado1" autocomplete="off" />
+                  </div>
+                  <div>
+                    <label class="form-label">Clave / PIN</label>
+                    <input type="password" id="nu-clave" class="form-input" placeholder="••••" autocomplete="new-password" />
+                  </div>
+                </div>
+                <div id="nu-error" class="hidden text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg"></div>
+                <button type="submit" class="btn-primary">Agregar Empleado</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── VIEW: Punto de Venta / Buffet ────────────────────────────── -->
+      <div id="view-punto-de-venta" class="view p-8">
+        <div class="mb-6 flex items-center justify-between">
+          <div>
+            <h1 class="text-2xl font-bold text-slate-800">Punto de Venta</h1>
+            <p class="text-slate-500 text-sm mt-1">Registrar ventas del buffet</p>
+          </div>
+          <button class="btn-primary" onclick="loadPuntoDeVenta()">Actualizar stock</button>
+        </div>
+        <div id="pos-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <p class="col-span-4 text-center text-slate-400 py-12">Cargando productos...</p>
+        </div>
+      </div>
+
+      <!-- ── VIEW: Inventario Buffet (admin-only) ──────────────────────── -->
+      <div id="view-inventario" class="view p-8">
+        <div class="mb-6">
+          <h1 class="text-2xl font-bold text-slate-800">Inventario Buffet</h1>
+          <p class="text-slate-500 text-sm mt-1">Alta, baja y modificación de productos</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+            <h2 class="font-semibold text-slate-800 mb-4">Nuevo Producto</h2>
+            <form id="form-nuevo-articulo" class="space-y-4">
+              <div>
+                <label class="form-label">Nombre <span class="text-red-500">*</span></label>
+                <input type="text" id="art-nombre" class="form-input" placeholder="Bebida, Proteína, etc." />
+              </div>
+              <div>
+                <label class="form-label">Precio ($) <span class="text-red-500">*</span></label>
+                <input type="number" id="art-precio" class="form-input" placeholder="500" min="0" step="1" />
+              </div>
+              <div>
+                <label class="form-label">Stock inicial</label>
+                <input type="number" id="art-stock" class="form-input" placeholder="0" min="0" step="1" value="0" />
+              </div>
+              <div id="art-error" class="hidden text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg"></div>
+              <button type="submit" class="btn-primary w-full">Agregar Producto</button>
+            </form>
+          </div>
+
+          <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h2 class="font-semibold text-slate-800">Productos Activos</h2>
+              <button class="btn-secondary text-xs" onclick="loadInventario()">Actualizar</button>
+            </div>
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50">
+                <tr>
+                  <th class="text-left px-6 py-3 font-semibold text-slate-600">Nombre</th>
+                  <th class="text-left px-6 py-3 font-semibold text-slate-600">Precio</th>
+                  <th class="text-left px-6 py-3 font-semibold text-slate-600">Stock</th>
+                  <th class="text-left px-6 py-3 font-semibold text-slate-600">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="inventario-tbody">
+                <tr><td colspan="4" class="text-center text-slate-400 py-12">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── VIEW: Gastos (admin-only) ─────────────────────────────────── -->
+      <div id="view-gastos" class="view p-8">
+        <div class="mb-6">
+          <h1 class="text-2xl font-bold text-slate-800">Gastos del Día</h1>
+          <p class="text-slate-500 text-sm mt-1">Registrar y controlar egresos</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+            <h2 class="font-semibold text-slate-800 mb-4">Registrar Gasto</h2>
+            <form id="form-egreso" class="space-y-4">
+              <div>
+                <label class="form-label">Concepto <span class="text-red-500">*</span></label>
+                <input type="text" id="egr-concepto" class="form-input" placeholder="Ej: Limpieza, Gas, etc." />
+              </div>
+              <div>
+                <label class="form-label">Monto ($) <span class="text-red-500">*</span></label>
+                <input type="number" id="egr-monto" class="form-input" placeholder="1500" min="0" step="1" />
+              </div>
+              <div id="egr-error" class="hidden text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg"></div>
+              <button type="submit" class="btn-primary w-full">Registrar Gasto</button>
+            </form>
+          </div>
+
+          <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h2 class="font-semibold text-slate-800">Gastos de Hoy</h2>
+              <p class="text-sm text-slate-500">Total: <span id="gastos-total-hoy" class="font-semibold text-red-600">$0</span></p>
+            </div>
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50">
+                <tr>
+                  <th class="text-left px-6 py-3 font-semibold text-slate-600">Concepto</th>
+                  <th class="text-left px-6 py-3 font-semibold text-slate-600">Monto</th>
+                  <th class="text-left px-6 py-3 font-semibold text-slate-600">Registró</th>
+                </tr>
+              </thead>
+              <tbody id="gastos-tbody">
+                <tr><td colspan="3" class="text-center text-slate-400 py-12">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── VIEW: Grupos Familiares (admin-only) ─────────────────────── -->
+      <div id="view-grupos" class="view p-8">
+        <div class="mb-6">
+          <h1 class="text-2xl font-bold text-slate-800">Grupos Familiares</h1>
+          <p class="text-slate-500 text-sm mt-1">Vinculá socios para que compartan el acceso con una sola membresía vigente</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- Panel izquierdo: crear + lista de grupos -->
+          <div class="space-y-4">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+              <h2 class="font-semibold text-slate-800 mb-4">Nuevo Grupo</h2>
+              <form id="form-crear-grupo" class="space-y-3">
+                <div>
+                  <label class="form-label">Nombre del grupo <span class="text-red-500">*</span></label>
+                  <input type="text" id="grp-nombre" class="form-input" placeholder="Ej: Familia García" />
+                </div>
+                <div id="grp-error" class="hidden text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg"></div>
+                <button type="submit" class="btn-primary w-full">Crear Grupo</button>
+              </form>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+              <div class="px-5 py-4 border-b border-slate-100">
+                <h2 class="font-semibold text-slate-800">Grupos existentes</h2>
+              </div>
+              <div id="grupos-list" class="divide-y divide-slate-50">
+                <p class="text-sm text-slate-400 p-5">Cargando...</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Panel derecho: detalle del grupo seleccionado -->
+          <div class="lg:col-span-2" id="grupo-detail-panel">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+              <p class="text-slate-400 text-sm text-center py-8">Seleccioná un grupo para ver sus miembros</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+  </div><!-- fin #main-layout -->
+
+  <!-- ── Modal: Editar Socio ────────────────────────────────────────────── -->
+  <div id="modal-editar-socio" class="fixed inset-0 z-40 hidden">
+    <div class="absolute inset-0 bg-black/50" onclick="closeEditarSocioModal()"></div>
+    <div class="relative flex items-center justify-center h-full p-4">
+      <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-5">
+            <div>
+              <h2 class="text-lg font-bold text-slate-800">Editar Socio</h2>
+              <p class="text-xs text-slate-400 mt-0.5" id="es-edad-display"></p>
+            </div>
+            <button onclick="closeEditarSocioModal()"
+                    class="text-slate-400 hover:text-slate-600 transition-colors">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          <form id="form-editar-socio" class="space-y-4">
+            <input type="hidden" id="es-id" />
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="form-label">Nombre <span class="text-red-500">*</span></label>
+                <input type="text" id="es-nombre" class="form-input" required />
+              </div>
+              <div>
+                <label class="form-label">Apellido <span class="text-red-500">*</span></label>
+                <input type="text" id="es-apellido" class="form-input" required />
+              </div>
+            </div>
+            <div>
+              <label class="form-label">Teléfono</label>
+              <input type="text" id="es-telefono" class="form-input" placeholder="Sin 0 ni 15" />
+            </div>
+            <div>
+              <label class="form-label">Email</label>
+              <input type="email" id="es-email" class="form-input" />
+            </div>
+            <div>
+              <label class="form-label">Domicilio</label>
+              <input type="text" id="es-domicilio" class="form-input" />
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="form-label">Fecha de Nacimiento</label>
+                <input type="date" id="es-fechanac" class="form-input" />
+              </div>
+              <div>
+                <label class="form-label">Género</label>
+                <select id="es-genero" class="form-input">
+                  <option value="">Sin especificar</option>
+                  <option value="Masculino">Masculino</option>
+                  <option value="Femenino">Femenino</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </div>
+            </div>
+            <div id="es-error" class="hidden text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg"></div>
+            <div class="flex gap-3 pt-2">
+              <button type="submit" class="btn-primary" id="es-submit">Guardar Cambios</button>
+              <button type="button" class="btn-secondary" onclick="closeEditarSocioModal()">Cancelar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal: Editar Pago ─────────────────────────────────────────────── -->
+  <div id="modal-editar-pago" class="fixed inset-0 z-40 hidden">
+    <div class="absolute inset-0 bg-black/50" onclick="closeEditarPagoModal()"></div>
+    <div class="relative flex items-center justify-center h-full p-4">
+      <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-5">
+            <h2 class="text-lg font-bold text-slate-800">Editar Pago</h2>
+            <button onclick="closeEditarPagoModal()" class="text-slate-400 hover:text-slate-600">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          <form id="form-editar-pago" class="space-y-4">
+            <input type="hidden" id="ep-id" />
+            <div>
+              <label class="form-label">Monto ($) <span class="text-red-500">*</span></label>
+              <input type="number" id="ep-monto" class="form-input" min="0" />
+            </div>
+            <div>
+              <label class="form-label">Método de Pago</label>
+              <select id="ep-metodo" class="form-input">
+                <option value="Efectivo">Efectivo</option>
+                <option value="Transferencia">Transferencia</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Descripción</label>
+              <input type="text" id="ep-descripcion" class="form-input" placeholder="Descripción opcional" />
+            </div>
+            <div class="flex gap-3 pt-2">
+              <button type="submit" class="btn-primary" id="ep-submit">Guardar</button>
+              <button type="button" class="btn-secondary" onclick="closeEditarPagoModal()">Cancelar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal: Editar Artículo ─────────────────────────────────────────── -->
+  <div id="modal-articulo" class="fixed inset-0 z-40 hidden">
+    <div class="absolute inset-0 bg-black/50" onclick="closeArticuloModal()"></div>
+    <div class="relative flex items-center justify-center h-full p-4">
+      <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-5">
+            <h2 class="text-lg font-bold text-slate-800">Editar Producto</h2>
+            <button onclick="closeArticuloModal()" class="text-slate-400 hover:text-slate-600">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          <form id="form-editar-articulo" class="space-y-4">
+            <input type="hidden" id="ea-id" />
+            <div>
+              <label class="form-label">Nombre <span class="text-red-500">*</span></label>
+              <input type="text" id="ea-nombre" class="form-input" />
+            </div>
+            <div>
+              <label class="form-label">Precio ($) <span class="text-red-500">*</span></label>
+              <input type="number" id="ea-precio" class="form-input" min="0" step="1" />
+            </div>
+            <div>
+              <label class="form-label">Agregar stock (stock actual: <span id="ea-stock-actual" class="font-semibold">0</span>)</label>
+              <input type="number" id="ea-stock-add" class="form-input" min="0" step="1" placeholder="0 = no agregar" />
+            </div>
+            <div id="ea-error" class="hidden text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg"></div>
+            <div class="flex gap-3 pt-2">
+              <button type="submit" class="btn-primary">Guardar</button>
+              <button type="button" class="btn-secondary" onclick="closeArticuloModal()">Cancelar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal: Venta POS ───────────────────────────────────────────────── -->
+  <div id="modal-venta-pos" class="fixed inset-0 z-40 hidden">
+    <div class="absolute inset-0 bg-black/50" onclick="closePosModal()"></div>
+    <div class="relative flex items-center justify-center h-full p-4">
+      <div class="bg-white rounded-2xl shadow-xl w-full max-w-xs">
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-bold text-slate-800" id="pos-modal-nombre">Producto</h2>
+            <button onclick="closePosModal()" class="text-slate-400 hover:text-slate-600">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          <div class="mb-4 p-3 bg-slate-50 rounded-lg">
+            <p class="text-sm text-slate-500">Precio unitario: <span id="pos-modal-precio" class="font-semibold text-slate-800"></span></p>
+            <p class="text-sm text-slate-500 mt-1">Stock disponible: <span id="pos-modal-stock" class="font-semibold"></span></p>
+          </div>
+          <div class="mb-4">
+            <label class="form-label">Cantidad</label>
+            <input type="number" id="pos-cantidad" class="form-input text-center text-xl font-bold"
+                   value="1" min="1" oninput="updatePosTotal()" />
+          </div>
+          <div class="mb-5 p-3 bg-emerald-50 rounded-lg flex items-center justify-between">
+            <span class="text-sm font-medium text-emerald-700">Total a cobrar:</span>
+            <span id="pos-total" class="text-xl font-bold text-emerald-700"></span>
+          </div>
+          <div class="flex gap-3">
+            <button id="pos-cobrar-btn" class="btn-green flex-1" onclick="confirmarVentaPos()">Cobrar</button>
+            <button class="btn-secondary" onclick="closePosModal()">Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal: Editar Membresía ──────────────────────────────────────────── -->
+  <div id="modal-membresia" class="fixed inset-0 z-40 hidden">
+    <div class="absolute inset-0 bg-black/50" onclick="closeMembresiaModal()"></div>
+    <div class="relative flex items-center justify-center h-full p-4">
+      <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-5">
+            <h2 class="text-lg font-bold text-slate-800">Editar Membresía</h2>
+            <button onclick="closeMembresiaModal()" class="text-slate-400 hover:text-slate-600">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          <form id="form-editar-membresia" class="space-y-4">
+            <input type="hidden" id="em-id" />
+            <div>
+              <label class="form-label">Nombre <span class="text-red-500">*</span></label>
+              <input type="text" id="em-nombre" class="form-input" />
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="form-label">Días <span class="text-red-500">*</span></label>
+                <input type="number" id="em-dias" class="form-input" min="1" />
+              </div>
+              <div>
+                <label class="form-label">Precio ($) <span class="text-red-500">*</span></label>
+                <input type="number" id="em-precio" class="form-input" min="0" />
+              </div>
+            </div>
+            <div id="em-error" class="hidden text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg"></div>
+            <div class="flex gap-3 pt-2">
+              <button type="submit" class="btn-primary" id="em-submit">Guardar</button>
+              <button type="button" class="btn-secondary" onclick="closeMembresiaModal()">Cancelar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Toast de notificaciones -->
   <div id="toast" class="toast hidden">

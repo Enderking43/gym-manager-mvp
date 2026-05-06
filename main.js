@@ -12,10 +12,12 @@ function createAdminWindow() {
     height: 800,
     show: false,
     title: 'Gimnasio MVP — Administrador',
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'src/main/preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      devTools: !app.isPackaged,
     },
   });
 
