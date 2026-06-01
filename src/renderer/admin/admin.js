@@ -9,6 +9,7 @@ let membresias        = [];
 let ccSocioActual     = null;
 let gymConfig         = { nombre_gym: 'Gimnasio Local', color_primario: '#EAB308', logo_base64: '' };
 let currentLogoBase64 = '';
+let currentQrBase64   = '';
 let revenueChart      = null;
 let currentUser       = null;   // { id, nombre, rol }
 let movimientosCache  = [];
@@ -17,6 +18,7 @@ let posArticuloActual   = null;
 let membresiasCfgCache  = [];
 let gruposCache         = [];
 let grupoSeleccionado   = null;
+let licenciaValidaRemota = null;  // null=no verificado, true=válida, false=inválida/expirada
 
 // ── Helpers de fecha ──────────────────────────────────────────────────────
 function formatDate(dateStr) {
@@ -143,6 +145,19 @@ function populateConfigForm() {
   } else if (previewWrap) {
     previewWrap.classList.add('hidden');
   }
+
+  currentQrBase64 = gymConfig.qr_mercadopago_base64 || '';
+  const qrPreview     = document.getElementById('cfg-qr-preview');
+  const qrPreviewWrap = document.getElementById('cfg-qr-preview-wrap');
+  if (currentQrBase64 && qrPreview && qrPreviewWrap) {
+    qrPreview.src = currentQrBase64;
+    qrPreviewWrap.classList.remove('hidden');
+  } else if (qrPreviewWrap) {
+    qrPreviewWrap.classList.add('hidden');
+  }
+
+  const impresionChk = document.getElementById('cfg-impresion');
+  if (impresionChk) impresionChk.checked = !!gymConfig.impresion_habilitada;
 }
 
 document.getElementById('cfg-logo').addEventListener('change', (e) => {
@@ -168,6 +183,66 @@ function clearLogo() {
   if (previewWrap) previewWrap.classList.add('hidden');
 }
 
+document.getElementById('cfg-qr').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    currentQrBase64 = ev.target.result;
+    const qrPreview     = document.getElementById('cfg-qr-preview');
+    const qrPreviewWrap = document.getElementById('cfg-qr-preview-wrap');
+    if (qrPreview && qrPreviewWrap) {
+      qrPreview.src = currentQrBase64;
+      qrPreviewWrap.classList.remove('hidden');
+    }
+  };
+  reader.readAsDataURL(file);
+});
+
+function clearQr() {
+  currentQrBase64 = '';
+  document.getElementById('cfg-qr').value = '';
+  const qrPreviewWrap = document.getElementById('cfg-qr-preview-wrap');
+  if (qrPreviewWrap) qrPreviewWrap.classList.add('hidden');
+}
+
+let _qrConfirmacionActiva = false;
+
+function openQrModal(modoConfirmacion = false) {
+  if (!gymConfig.qr_mercadopago_base64) {
+    showToast('No hay QR configurado. Subilo en la sección Configuración.', 'error');
+    return;
+  }
+  const qrImg = document.getElementById('qr-modal-img');
+  if (qrImg) qrImg.src = gymConfig.qr_mercadopago_base64;
+
+  _qrConfirmacionActiva = modoConfirmacion;
+  const confirmBtn = document.getElementById('qr-confirmar-btn');
+  if (confirmBtn) confirmBtn.classList.toggle('hidden', !modoConfirmacion);
+
+  document.getElementById('modal-qr').classList.remove('hidden');
+}
+
+function closeQrModal() {
+  _qrConfirmacionActiva = false;
+  document.getElementById('modal-qr').classList.add('hidden');
+}
+
+function confirmarPagoQR() {
+  closeQrModal();
+  const form = document.getElementById('form-cobrar-cuota');
+  if (form) setTimeout(() => form.requestSubmit(), 150);
+}
+
+function onMetodoPagoChange() {
+  const radio = document.querySelector('input[name="cc-metodo"][value="Transferencia"]');
+  if (!radio?.checked) return;
+  if (!gymConfig.qr_mercadopago_base64) return;
+  const form = document.getElementById('form-cobrar-cuota');
+  if (!form || form.closest('.view')?.classList.contains('hidden')) return;
+  openQrModal(true);
+}
+
 async function saveConfig() {
   const nombre_gym     = document.getElementById('cfg-nombre').value.trim();
   const color_primario = document.getElementById('cfg-color').value;
@@ -181,15 +256,18 @@ async function saveConfig() {
   btn.disabled = true;
   btn.textContent = 'Guardando...';
 
+  const impresionChk      = document.getElementById('cfg-impresion');
+  const impresion_habilitada = impresionChk?.checked ? 1 : 0;
+
   const res = await window.api.invoke('guardar-configuracion', {
-    nombre_gym, color_primario, logo_base64: currentLogoBase64,
+    nombre_gym, color_primario, logo_base64: currentLogoBase64, qr_mercadopago_base64: currentQrBase64, impresion_habilitada,
   });
 
   btn.disabled = false;
   btn.textContent = 'Guardar Cambios';
 
   if (res.success) {
-    gymConfig = { nombre_gym, color_primario, logo_base64: currentLogoBase64 };
+    gymConfig = { ...gymConfig, nombre_gym, color_primario, logo_base64: currentLogoBase64, qr_mercadopago_base64: currentQrBase64, impresion_habilitada };
     applyTheme(gymConfig);
     showToast('Configuración guardada correctamente', 'success');
   } else {
@@ -280,7 +358,7 @@ function applySession(usuario) {
 
   // Si el empleado tiene activa una vista admin-only, llevarlo al dashboard
   const activeView = document.querySelector('.view.active');
-  const adminViews = ['view-reportes', 'view-configuracion', 'view-inventario', 'view-gastos', 'view-grupos'];
+  const adminViews = ['view-reportes', 'view-configuracion', 'view-inventario', 'view-gastos', 'view-grupos', 'view-soporte'];
   if (activeView && adminViews.includes(activeView.id) && usuario.rol !== 'admin') {
     switchView('dashboard');
   }
@@ -330,6 +408,7 @@ async function postLoginInit() {
   await loadDashboard();
   const mRes = await window.api.invoke('obtener-membresias');
   if (mRes.success) membresias = mRes.membresias;
+  checkLicenciaRemota(); // fire-and-forget: verifica licencia y actualiza banners al completarse
 }
 
 // ── Navegación ────────────────────────────────────────────────────────────
@@ -350,6 +429,7 @@ function switchView(viewName) {
   if (viewName === 'inventario')      loadInventario();
   if (viewName === 'gastos')          loadGastos();
   if (viewName === 'grupos')          loadGrupos();
+  if (viewName === 'soporte')         loadSoporte();
   if (viewName === 'configuracion') {
     populateConfigForm();
     if (currentUser?.rol === 'admin') {
@@ -446,6 +526,7 @@ async function loadDashboard() {
 
   renderTopProductos(res.productos_mas_vendidos);
   renderChart(res.ingresos_mensuales);
+  checkSoporteBanner();
 }
 
 function renderTopProductos(productos) {
@@ -938,6 +1019,20 @@ document.getElementById('form-cobrar-cuota').addEventListener('submit', async (e
       ? `Pase de ${nombre} registrado. Válido hasta el ${formatDate(res.fecha_vencimiento)}`
       : `Pago de ${nombre} registrado. Vence el ${formatDate(res.fecha_vencimiento)}`;
     showToast(msg, 'success');
+    // Imprimir ticket térmico solo si está habilitado (fire-and-forget)
+    if (gymConfig.impresion_habilitada) {
+    const selMem     = document.getElementById('cc-membresia');
+    const membNombre = selMem?.options[selMem.selectedIndex]?.text?.split(' — ')[0] || '—';
+    window.api.invoke('imprimir-ticket', {
+      socio_nombre:      nombre,
+      membresia_nombre:  tipo === 'pase' ? 'Pase Diario' : membNombre,
+      monto:             payload.monto,
+      metodo_pago:       metodo_pago,
+      fecha_vencimiento: res.fecha_vencimiento,
+      cobrado_por:       currentUser?.nombre || '—',
+      tipo_cobro:        tipo === 'pase' ? 'Pase' : 'Membresía',
+    });
+    }
     resetCobrarCuota();
   } else {
     errEl.textContent = res.error || 'Error al registrar el pago.';
@@ -954,6 +1049,8 @@ function resetCobrarCuota() {
   document.getElementById('form-cobrar-cuota').reset();
   document.getElementById('cc-section-membresia').classList.remove('hidden');
   document.getElementById('cc-section-pase').classList.add('hidden');
+  const qrCard = document.getElementById('cc-qr-card');
+  if (qrCard) qrCard.classList.toggle('hidden', !gymConfig.qr_mercadopago_base64);
   ccSocioActual = null;
 }
 
@@ -1607,6 +1704,171 @@ document.getElementById('form-crear-grupo').addEventListener('submit', async (e)
     errEl.classList.remove('hidden');
   }
 });
+
+// ── SOPORTE TÉCNICO ───────────────────────────────────────────────────────
+async function loadSoporte() {
+  const estadoEl = document.getElementById('soporte-estado');
+  if (!estadoEl) return;
+  estadoEl.innerHTML = '<p class="text-sm text-slate-400 py-2">Calculando...</p>';
+
+  const res = await window.api.invoke('obtener-estado-soporte');
+  if (!res.success) {
+    estadoEl.innerHTML = '<p class="text-sm text-red-500 py-2">Error al calcular el monto.</p>';
+    return;
+  }
+
+  const mesActual      = new Date().toISOString().substring(0, 7);
+  const pagadoEsteMes  = res.pagado_mes === mesActual;
+  const varMonto       = res.socios_activos * res.por_socio;
+
+  estadoEl.innerHTML = `
+    <div class="divide-y divide-slate-50">
+      <div class="flex items-center justify-between py-3">
+        <span class="text-sm text-slate-500">Socios activos al día de hoy</span>
+        <span class="text-sm font-semibold text-slate-800">${res.socios_activos}</span>
+      </div>
+      <div class="flex items-center justify-between py-3">
+        <span class="text-sm text-slate-500">Costo base mensual</span>
+        <span class="text-sm font-semibold text-slate-800">${formatCurrency(res.monto_base)}</span>
+      </div>
+      <div class="flex items-center justify-between py-3">
+        <span class="text-sm text-slate-500">${res.socios_activos} socios × ${formatCurrency(res.por_socio)}</span>
+        <span class="text-sm font-semibold text-slate-800">${formatCurrency(varMonto)}</span>
+      </div>
+      <div class="flex items-center justify-between py-3">
+        <span class="text-sm font-semibold text-slate-700">Total a pagar este mes</span>
+        <span class="text-xl font-bold" style="color: var(--color-primario)">${formatCurrency(res.monto_total)}</span>
+      </div>
+    </div>
+  `;
+
+  const pagadoMsg   = document.getElementById('soporte-pagado-msg');
+  const pendienteMsg = document.getElementById('soporte-pendiente-msg');
+  const btnInformar  = document.getElementById('soporte-btn-informar');
+
+  if (pagadoEsteMes) {
+    pagadoMsg?.classList.remove('hidden');
+    pendienteMsg?.classList.add('hidden');
+    if (btnInformar) { btnInformar.textContent = 'Pago ya informado este mes'; btnInformar.disabled = true; }
+  } else {
+    pagadoMsg?.classList.add('hidden');
+    pendienteMsg?.classList.remove('hidden');
+    if (btnInformar) { btnInformar.textContent = 'Informar Pago de este Mes'; btnInformar.disabled = false; }
+  }
+}
+
+async function informarPagoSoporte() {
+  const btn = document.getElementById('soporte-btn-informar');
+  if (btn) { btn.disabled = true; btn.textContent = 'Registrando...'; }
+
+  const res = await window.api.invoke('informar-pago-soporte');
+
+  if (res.success) {
+    await loadConfig();
+    showToast('Pago de soporte informado correctamente', 'success');
+    checkSoporteBanner();
+    await loadSoporte();
+  } else {
+    showToast(res.error || 'Error al informar el pago', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Informar Pago de este Mes'; }
+  }
+}
+
+function checkSoporteBanner() {
+  const today     = new Date();
+  const day       = today.getDate();
+  const mesActual = today.toISOString().substring(0, 7);
+
+  const bannerPeriodo   = document.getElementById('banner-soporte-periodo');
+  const bannerPendiente = document.getElementById('banner-soporte-pendiente');
+
+  // Si la validación remota de licencia falló, mostrar banner independientemente de la fecha
+  if (licenciaValidaRemota === false) {
+    bannerPeriodo?.classList.add('hidden');
+    bannerPendiente?.classList.remove('hidden');
+    return;
+  }
+
+  if (day >= 5 && day <= 10) {
+    bannerPeriodo?.classList.remove('hidden');
+    bannerPendiente?.classList.add('hidden');
+  } else if (day > 10) {
+    bannerPeriodo?.classList.add('hidden');
+    const pagadoMes = gymConfig.soporte_pagado_mes || '';
+    if (pagadoMes !== mesActual) {
+      bannerPendiente?.classList.remove('hidden');
+    } else {
+      bannerPendiente?.classList.add('hidden');
+    }
+  } else {
+    bannerPeriodo?.classList.add('hidden');
+    bannerPendiente?.classList.add('hidden');
+  }
+}
+
+// ── Validación remota de licencia (Gist) ─────────────────────────────────
+const GIST_LICENCIAS_URL = 'https://gist.githubusercontent.com/Enderking43/ba8d52970a5a68f3743c6aa9b8ba7f46/raw/4832a6172aadfe1d38ca666e05b6379a24841e5c/licencias.json';
+
+async function checkLicenciaRemota() {
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  if (navigator.onLine) {
+    try {
+      const ctrl = new AbortController();
+      const tid  = setTimeout(() => ctrl.abort(), 6000);
+      const res  = await fetch(GIST_LICENCIAS_URL, { signal: ctrl.signal, cache: 'no-store' });
+      clearTimeout(tid);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const lic  = json?.bali_hera_fitness;
+      if (lic?.status === 'active' && lic?.vence >= today) {
+        licenciaValidaRemota = true;
+        window.api.invoke('guardar-validacion-licencia', { fecha: today });
+      } else {
+        licenciaValidaRemota = false;
+      }
+    } catch (_) {
+      // Error de red o timeout: usar estado offline
+      licenciaValidaRemota = checkLicenciaOffline();
+    }
+  } else {
+    licenciaValidaRemota = checkLicenciaOffline();
+  }
+  checkSoporteBanner(); // actualizar banners al instante
+}
+
+function checkLicenciaOffline() {
+  const ultima = gymConfig.licencia_ultima_validacion || '';
+  if (!ultima) return false;
+  const ts = new Date(ultima + 'T00:00:00');
+  if (isNaN(ts.getTime())) return false;
+  const dias = Math.floor((Date.now() - ts.getTime()) / 86400000);
+  return dias <= 30; // 30 días de gracia offline
+}
+
+// ── Simulación de datos masivos (stress test) ─────────────────────────────
+async function simularDatosMasivos() {
+  if (!window.confirm(
+    '¿Confirmar simulación de datos?\n\nSe insertarán 100 socios de prueba y 200 ventas de buffet.\nEsto no puede deshacerse fácilmente.'
+  )) return;
+
+  const btn = document.getElementById('btn-simular');
+  if (btn) { btn.disabled = true; btn.textContent = 'Simulando...'; }
+
+  const res = await window.api.invoke('simular-datos-masivos');
+
+  if (btn) { btn.disabled = false; btn.textContent = 'Simular Datos Masivos'; }
+
+  if (res.success) {
+    const omitMsg = res.socios_omitidos > 0 ? ` (${res.socios_omitidos} ya existían)` : '';
+    showToast(
+      `Simulación completa: ${res.socios_insertados} socios${omitMsg}, ${res.ventas_insertadas} ventas.`,
+      'success'
+    );
+    loadDashboard();
+  } else {
+    showToast(`Error en simulación: ${res.error}`, 'error');
+  }
+}
 
 // ── Inicialización (pre-login) ────────────────────────────────────────────
 (async function preInit() {

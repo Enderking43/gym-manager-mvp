@@ -1,7 +1,64 @@
-const { ipcMain, dialog, app } = require('electron');
+const { ipcMain, dialog, app, BrowserWindow } = require('electron');
 const path = require('path');
 const fs   = require('fs');
 const { dbGet, dbAll, dbRun, saveDatabase, getDbFilePath } = require('../database/db');
+
+// ── Log de errores con timestamp en userData/error.log ────────────────────
+function logError(channel, err) {
+  const ts  = new Date().toISOString();
+  const msg = `[${ts}] [${channel}] ${err.message || err}\n${err.stack ? err.stack + '\n' : ''}`;
+  console.error(`[${channel}]`, err);
+  try {
+    const logPath = path.join(app.getPath('userData'), 'error.log');
+    fs.appendFileSync(logPath, msg, 'utf8');
+  } catch (_) { /* no interrumpir si no se puede escribir el log */ }
+}
+
+// ── Ticket térmico HTML (58mm/80mm) ──────────────────────────────────────
+function buildTicketHtml(datos) {
+  const now   = new Date();
+  const fecha = now.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const hora  = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  const monto = '$' + Number(datos.monto || 0).toLocaleString('es-AR');
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @page { size: 80mm auto; margin: 3mm 4mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Courier New', Courier, monospace; font-size: 11px; color: #000; width: 72mm; }
+  .center { text-align: center; }
+  .bold   { font-weight: bold; }
+  .big    { font-size: 14px; }
+  .small  { font-size: 9px; }
+  .sep    { border-top: 1px dashed #555; margin: 5px 0; }
+  .row    { display: flex; justify-content: space-between; margin: 2px 0; }
+  .total  { font-size: 13px; font-weight: bold; }
+</style>
+</head>
+<body>
+  <p class="center bold big">BALI HERA FITNESS</p>
+  <p class="center small" style="margin-bottom:4px">Sistema de Gestión Deportiva</p>
+  <div class="sep"></div>
+  <div class="row small"><span>Fecha:</span><span>${fecha}</span></div>
+  <div class="row small"><span>Hora:</span><span>${hora}</span></div>
+  <div class="sep"></div>
+  <div class="row"><span>Socio:</span><span>${String(datos.socio_nombre || '—').substring(0, 22)}</span></div>
+  <div class="row"><span>Tipo:</span><span>${datos.tipo_cobro || '—'}</span></div>
+  <div class="row"><span>Plan:</span><span>${String(datos.membresia_nombre || '—').substring(0, 18)}</span></div>
+  <div class="row"><span>Vence:</span><span>${datos.fecha_vencimiento || '—'}</span></div>
+  <div class="sep"></div>
+  <div class="row total"><span>TOTAL:</span><span>${monto}</span></div>
+  <div class="row"><span>Método:</span><span>${datos.metodo_pago || '—'}</span></div>
+  <div class="sep"></div>
+  <div class="row small"><span>Cobrado por:</span><span>${datos.cobrado_por || '—'}</span></div>
+  <div class="sep" style="margin-top:8px"></div>
+  <p class="center small" style="margin-top:4px">¡Gracias por elegirnos!</p>
+</body>
+</html>`;
+}
 
 function getToday() {
   const now = new Date();
@@ -77,7 +134,7 @@ function registerHandlers() {
         return { status: 'rojo', socio, pago: lastPago };
       }
     } catch (err) {
-      console.error('[buscar-socio-por-dni]', err);
+      logError('buscar-socio-por-dni', err);
       return { status: 'error', mensaje: err.message };
     }
   });
@@ -91,7 +148,7 @@ function registerHandlers() {
       saveDatabase();
       return { success: true, id: lastInsertRowid };
     } catch (err) {
-      console.error('[registrar-asistencia]', err);
+      logError('registrar-asistencia', err);
       return { success: false, error: err.message };
     }
   });
@@ -118,7 +175,7 @@ function registerHandlers() {
     } catch (err) {
       if (err.message && err.message.includes('UNIQUE'))
         return { success: false, error: 'El DNI ya está registrado' };
-      console.error('[crear-socio]', err);
+      logError('crear-socio', err);
       return { success: false, error: err.message };
     }
   });
@@ -144,7 +201,7 @@ function registerHandlers() {
       saveDatabase();
       return { success: true };
     } catch (err) {
-      console.error('[editar-socio]', err);
+      logError('editar-socio', err);
       return { success: false, error: err.message };
     }
   });
@@ -190,7 +247,7 @@ function registerHandlers() {
         throw inner;
       }
     } catch (err) {
-      console.error('[registrar-pago]', err);
+      logError('registrar-pago', err);
       return { success: false, error: err.message };
     }
   });
@@ -206,7 +263,7 @@ function registerHandlers() {
       saveDatabase();
       return { success: true };
     } catch (err) {
-      console.error('[editar-pago]', err);
+      logError('editar-pago', err);
       return { success: false, error: err.message };
     }
   });
@@ -235,7 +292,7 @@ function registerHandlers() {
 
       return { success: true, cajaDia, deudores };
     } catch (err) {
-      console.error('[obtener-dashboard]', err);
+      logError('obtener-dashboard', err);
       return { success: false, error: err.message };
     }
   });
@@ -265,7 +322,7 @@ function registerHandlers() {
       `);
       return { success: true, movimientos };
     } catch (err) {
-      console.error('[obtener-movimientos]', err);
+      logError('obtener-movimientos', err);
       return { success: false, error: err.message };
     }
   });
@@ -298,7 +355,7 @@ function registerHandlers() {
 
       return { success: true, socio, lastPago, estadoMembresia };
     } catch (err) {
-      console.error('[buscar-socio-admin]', err);
+      logError('buscar-socio-admin', err);
       return { success: false, error: err.message };
     }
   });
@@ -306,7 +363,6 @@ function registerHandlers() {
   // ── OBTENER MEMBRESÍAS ──────────────────────────────────────────────────
   ipcMain.handle('obtener-membresias', () => {
     try {
-      // Excluye el "Pase Diario" (id=3) y las membresías dadas de baja (estado Inactivo)
       const membresias = dbAll(`
         SELECT * FROM membresias
         WHERE  id != 3 AND (estado IS NULL OR estado = 'Activo')
@@ -314,7 +370,7 @@ function registerHandlers() {
       `);
       return { success: true, membresias };
     } catch (err) {
-      console.error('[obtener-membresias]', err);
+      logError('obtener-membresias', err);
       return { success: false, error: err.message };
     }
   });
@@ -335,7 +391,7 @@ function registerHandlers() {
       saveDatabase();
       return { success: true, id: lastInsertRowid };
     } catch (err) {
-      console.error('[crear-membresia]', err);
+      logError('crear-membresia', err);
       return { success: false, error: err.message };
     }
   });
@@ -355,7 +411,7 @@ function registerHandlers() {
       saveDatabase();
       return { success: true };
     } catch (err) {
-      console.error('[actualizar-membresia]', err);
+      logError('actualizar-membresia', err);
       return { success: false, error: err.message };
     }
   });
@@ -366,7 +422,7 @@ function registerHandlers() {
       saveDatabase();
       return { success: true };
     } catch (err) {
-      console.error('[eliminar-membresia]', err);
+      logError('eliminar-membresia', err);
       return { success: false, error: err.message };
     }
   });
@@ -383,7 +439,7 @@ function registerHandlers() {
       saveDatabase();
       return { success: true, id: lastInsertRowid };
     } catch (err) {
-      console.error('[crear-grupo]', err);
+      logError('crear-grupo', err);
       return { success: false, error: err.message };
     }
   });
@@ -404,7 +460,7 @@ function registerHandlers() {
         })),
       };
     } catch (err) {
-      console.error('[obtener-grupos]', err);
+      logError('obtener-grupos', err);
       return { success: false, error: err.message };
     }
   });
@@ -416,7 +472,7 @@ function registerHandlers() {
       saveDatabase();
       return { success: true };
     } catch (err) {
-      console.error('[actualizar-grupo-socio]', err);
+      logError('actualizar-grupo-socio', err);
       return { success: false, error: err.message };
     }
   });
@@ -435,7 +491,7 @@ function registerHandlers() {
         throw inner;
       }
     } catch (err) {
-      console.error('[eliminar-grupo]', err);
+      logError('eliminar-grupo', err);
       return { success: false, error: err.message };
     }
   });
@@ -451,7 +507,7 @@ function registerHandlers() {
       if (!user) return { success: false, error: 'Usuario o clave incorrectos' };
       return { success: true, usuario: user };
     } catch (err) {
-      console.error('[validar-login]', err);
+      logError('validar-login', err);
       return { success: false, error: err.message };
     }
   });
@@ -462,7 +518,7 @@ function registerHandlers() {
       const usuarios = dbAll('SELECT id, nombre, rol FROM usuarios ORDER BY id ASC');
       return { success: true, usuarios };
     } catch (err) {
-      console.error('[obtener-usuarios]', err);
+      logError('obtener-usuarios', err);
       return { success: false, error: err.message };
     }
   });
@@ -481,7 +537,7 @@ function registerHandlers() {
     } catch (err) {
       if (err.message && err.message.includes('UNIQUE'))
         return { success: false, error: 'Ya existe un usuario con ese nombre' };
-      console.error('[crear-usuario]', err);
+      logError('crear-usuario', err);
       return { success: false, error: err.message };
     }
   });
@@ -497,7 +553,7 @@ function registerHandlers() {
       saveDatabase();
       return { success: true };
     } catch (err) {
-      console.error('[eliminar-usuario]', err);
+      logError('eliminar-usuario', err);
       return { success: false, error: err.message };
     }
   });
@@ -682,7 +738,7 @@ function registerHandlers() {
       return { success: true, filePath };
 
     } catch (err) {
-      console.error('[generar-reporte-excel]', err);
+      logError('generar-reporte-excel', err);
       return { success: false, error: err.message };
     }
   });
@@ -702,7 +758,7 @@ function registerHandlers() {
       fs.copyFileSync(getDbFilePath(), destFile);
       return { success: true, destFile };
     } catch (err) {
-      console.error('[crear-backup]', err);
+      logError('crear-backup', err);
       return { success: false, error: err.message };
     }
   });
@@ -722,7 +778,7 @@ function registerHandlers() {
       app.exit(0);
       return { success: true };
     } catch (err) {
-      console.error('[restaurar-base-datos]', err);
+      logError('restaurar-base-datos', err);
       return { success: false, error: err.message };
     }
   });
@@ -733,7 +789,7 @@ function registerHandlers() {
       const config = dbGet('SELECT * FROM configuracion WHERE id = 1');
       return { success: true, config };
     } catch (err) {
-      console.error('[obtener-configuracion]', err);
+      logError('obtener-configuracion', err);
       return { success: false, error: err.message };
     }
   });
@@ -741,16 +797,108 @@ function registerHandlers() {
   // ── GUARDAR CONFIGURACIÓN ────────────────────────────────────────────────
   ipcMain.handle('guardar-configuracion', (_event, datos) => {
     try {
-      const { nombre_gym, color_primario, logo_base64 } = datos;
+      const { nombre_gym, color_primario, logo_base64, qr_mercadopago_base64, impresion_habilitada } = datos;
       dbRun(
-        'UPDATE configuracion SET nombre_gym = ?, color_primario = ?, logo_base64 = ? WHERE id = 1',
-        [nombre_gym ?? 'Gimnasio Local', color_primario ?? '#EAB308', logo_base64 ?? '']
+        'UPDATE configuracion SET nombre_gym = ?, color_primario = ?, logo_base64 = ?, qr_mercadopago_base64 = ?, impresion_habilitada = ? WHERE id = 1',
+        [nombre_gym ?? 'Gimnasio Local', color_primario ?? '#EAB308', logo_base64 ?? '', qr_mercadopago_base64 ?? '', impresion_habilitada ? 1 : 0]
       );
       saveDatabase();
       return { success: true };
     } catch (err) {
-      console.error('[guardar-configuracion]', err);
+      logError('guardar-configuracion', err);
       return { success: false, error: err.message };
+    }
+  });
+
+  // ── ESTADO DE SOPORTE (cálculo de liquidación mensual) ───────────────────
+  ipcMain.handle('obtener-estado-soporte', () => {
+    try {
+      const today = getToday();
+      const activosRow = dbGet(`
+        SELECT COUNT(*) as count FROM (
+          SELECT s.id FROM socios s
+          INNER JOIN pagos p ON p.socio_id = s.id
+          GROUP BY s.id
+          HAVING MAX(p.fecha_vencimiento) >= ?
+        )
+      `, [today]);
+      const sociosActivos = activosRow ? activosRow.count : 0;
+      const montoBase = 50000;
+      const porSocio  = 1000;
+      const config = dbGet('SELECT soporte_pagado_mes FROM configuracion WHERE id = 1');
+      return {
+        success:        true,
+        socios_activos: sociosActivos,
+        monto_base:     montoBase,
+        por_socio:      porSocio,
+        monto_total:    montoBase + (sociosActivos * porSocio),
+        pagado_mes:     config?.soporte_pagado_mes || '',
+      };
+    } catch (err) {
+      logError('obtener-estado-soporte', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // ── INFORMAR PAGO DE SOPORTE ─────────────────────────────────────────────
+  ipcMain.handle('informar-pago-soporte', () => {
+    try {
+      const mesActual = getToday().substring(0, 7); // YYYY-MM
+      dbRun('UPDATE configuracion SET soporte_pagado_mes = ? WHERE id = 1', [mesActual]);
+      saveDatabase();
+      return { success: true };
+    } catch (err) {
+      logError('informar-pago-soporte', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // ── GUARDAR FECHA DE VALIDACIÓN DE LICENCIA ──────────────────────────────
+  ipcMain.handle('guardar-validacion-licencia', (_event, datos) => {
+    try {
+      const { fecha } = datos;
+      dbRun(
+        'UPDATE configuracion SET licencia_ultima_validacion = ? WHERE id = 1',
+        [fecha || '']
+      );
+      saveDatabase();
+      return { success: true };
+    } catch (err) {
+      logError('guardar-validacion-licencia', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // ── IMPRIMIR TICKET TÉRMICO ──────────────────────────────────────────────
+  ipcMain.handle('imprimir-ticket', async (_event, datos) => {
+    const tmpPath = path.join(app.getPath('temp'), 'gym_ticket.html');
+    let   win     = null;
+    try {
+      fs.writeFileSync(tmpPath, buildTicketHtml(datos), 'utf8');
+
+      win = new BrowserWindow({
+        show: false,
+        width: 400,
+        height: 600,
+        webPreferences: { nodeIntegration: false, contextIsolation: true },
+      });
+
+      await win.loadFile(tmpPath);
+
+      const result = await new Promise((resolve) => {
+        win.webContents.print(
+          { silent: false, printBackground: true },
+          (success, failureReason) => resolve({ success, failureReason })
+        );
+      });
+
+      return result;
+    } catch (err) {
+      logError('imprimir-ticket', err);
+      return { success: false, error: err.message };
+    } finally {
+      try { win?.close(); }    catch (_) {}
+      try { fs.unlinkSync(tmpPath); } catch (_) {}
     }
   });
 
@@ -838,7 +986,7 @@ function registerHandlers() {
         productos_mas_vendidos:   productosMasVendidos,
       };
     } catch (err) {
-      console.error('[obtener-estadisticas-dashboard]', err);
+      logError('obtener-estadisticas-dashboard', err);
       return { success: false, error: err.message };
     }
   });
@@ -851,7 +999,7 @@ function registerHandlers() {
       );
       return { success: true, articulos };
     } catch (err) {
-      console.error('[obtener-articulos]', err);
+      logError('obtener-articulos', err);
       return { success: false, error: err.message };
     }
   });
@@ -868,7 +1016,7 @@ function registerHandlers() {
       saveDatabase();
       return { success: true, id: lastInsertRowid };
     } catch (err) {
-      console.error('[crear-articulo]', err);
+      logError('crear-articulo', err);
       return { success: false, error: err.message };
     }
   });
@@ -892,7 +1040,7 @@ function registerHandlers() {
       saveDatabase();
       return { success: true };
     } catch (err) {
-      console.error('[actualizar-articulo]', err);
+      logError('actualizar-articulo', err);
       return { success: false, error: err.message };
     }
   });
@@ -903,7 +1051,7 @@ function registerHandlers() {
       saveDatabase();
       return { success: true };
     } catch (err) {
-      console.error('[eliminar-articulo]', err);
+      logError('eliminar-articulo', err);
       return { success: false, error: err.message };
     }
   });
@@ -943,7 +1091,7 @@ function registerHandlers() {
         throw inner;
       }
     } catch (err) {
-      console.error('[registrar-venta-articulo]', err);
+      logError('registrar-venta-articulo', err);
       return { success: false, error: err.message };
     }
   });
@@ -961,7 +1109,7 @@ function registerHandlers() {
       saveDatabase();
       return { success: true };
     } catch (err) {
-      console.error('[registrar-egreso]', err);
+      logError('registrar-egreso', err);
       return { success: false, error: err.message };
     }
   });
@@ -978,7 +1126,95 @@ function registerHandlers() {
       `, [getToday()]);
       return { success: true, egresos };
     } catch (err) {
-      console.error('[obtener-egresos-hoy]', err);
+      logError('obtener-egresos-hoy', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // ── SIMULACIÓN DE DATOS MASIVOS (stress test) ────────────────────────────
+  ipcMain.handle('simular-datos-masivos', () => {
+    try {
+      const today    = getToday();
+      const membresia = dbGet("SELECT id FROM membresias WHERE nombre = 'Mensual' LIMIT 1");
+      if (!membresia) return { success: false, error: 'No existe la membresía Mensual' };
+      const membId = membresia.id;
+
+      let insertados = 0;
+      let omitidos   = 0;
+
+      dbRun('BEGIN');
+      try {
+        // ── 100 socios: 50 activos + 50 deudores ───────────────────────────
+        for (let i = 1; i <= 100; i++) {
+          const dni   = `9${String(i).padStart(7, '0')}`; // 90000001..90000100
+          const exist = dbGet('SELECT id FROM socios WHERE dni = ?', [dni]);
+          if (exist) { omitidos++; continue; }
+
+          const nombre = i <= 50 ? `Activo${i}` : `Deudor${i - 50}`;
+          const { lastInsertRowid: socioId } = dbRun(
+            'INSERT INTO socios (dni, nombre, apellido) VALUES (?,?,?)',
+            [dni, nombre, 'Simulado']
+          );
+
+          // Activos: pagaron hace 5 días, vencen en 26 días
+          // Deudores: pagaron hace 60 días, vencieron hace 29 días
+          const diasAtras = i <= 50 ? -5 : -60;
+          const fechaPago = addDays(today, diasAtras);
+          const fechaVenc = addDays(fechaPago, 31);
+
+          dbRun(
+            `INSERT INTO pagos
+               (socio_id, membresia_id, fecha_pago, fecha_vencimiento, monto, metodo_pago)
+             VALUES (?,?,?,?,?,?)`,
+            [socioId, membId, fechaPago, fechaVenc, 15000, 'Efectivo']
+          );
+
+          insertados++;
+        }
+
+        // ── 200 ventas de buffet ────────────────────────────────────────────
+        let articuloId  = null;
+        let precioArt   = 500;
+        const artExist  = dbGet("SELECT id, precio FROM articulos WHERE estado = 'Activo' LIMIT 1");
+
+        if (artExist) {
+          articuloId = artExist.id;
+          precioArt  = artExist.precio || 500;
+          // Agregar stock suficiente para las ventas simuladas
+          dbRun('UPDATE articulos SET stock = stock + 600 WHERE id = ?', [articuloId]);
+        } else {
+          const { lastInsertRowid } = dbRun(
+            "INSERT INTO articulos (nombre, precio, stock) VALUES ('Bebida (Simulación)', 500, 600)"
+          );
+          articuloId = lastInsertRowid;
+        }
+
+        for (let i = 0; i < 200; i++) {
+          const cant  = (i % 3) + 1; // ciclo 1, 2, 3 unidades
+          const total = precioArt * cant;
+          dbRun(
+            `INSERT INTO ventas_articulos (articulo_id, cantidad, precio_unitario, total)
+             VALUES (?,?,?,?)`,
+            [articuloId, cant, precioArt, total]
+          );
+          dbRun('UPDATE articulos SET stock = stock - ? WHERE id = ?', [cant, articuloId]);
+        }
+
+        dbRun('COMMIT');
+        saveDatabase();
+
+        return {
+          success:           true,
+          socios_insertados: insertados,
+          socios_omitidos:   omitidos,
+          ventas_insertadas: 200,
+        };
+      } catch (inner) {
+        dbRun('ROLLBACK');
+        throw inner;
+      }
+    } catch (err) {
+      logError('simular-datos-masivos', err);
       return { success: false, error: err.message };
     }
   });

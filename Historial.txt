@@ -1,0 +1,198 @@
+# Hoja de Ruta de Desarrollo - Gimnasio MVP
+
+El desarrollo debe seguir estrictamente estas fases. No avanzar a la siguiente fase sin completar y probar la anterior.
+
+## Fase 1: Setup y Base de Datos ✅
+- [x] Instalar dependencias esenciales: `npm install electron sql.js` (se migró de better-sqlite3 → sql.js para evitar compilaciones nativas en Windows). `electron-builder` como devDependency.
+- [x] Crear la estructura de carpetas: `src/main/`, `src/renderer/admin/`, `src/renderer/kiosk/`, `src/database/`.
+- [x] Configurar `main.js` para levantar Electron con dos ventanas ocultas inicialmente.
+- [x] Crear `src/database/db.js` que inicialice SQLite y cree las 4 tablas principales si no existen.
+- [x] Insertar datos semilla (seeds) básicos para `membresias` (Mensual 31 días y Semestral 186 días).
+
+## Fase 2: Backend Lógico (IPC) ✅
+- [x] Crear los handlers en `src/main/handlers.js` (`ipcMain.handle`) para: 
+  - `buscar-socio-por-dni(dni)` (Incluye máquina de estados verde/amarillo/rojo).
+  - `registrar-asistencia(socio_id)`.
+  - `crear-socio(datos)`.
+  - `registrar-pago(datos)`.
+  - `obtener-dashboard()` (Caja del día y lista de deudores).
+  - `obtener-membresias()` (Listado para selects del admin).
+
+## Fase 3: Interfaz del Kiosco (Pantalla 2) ✅
+- [x] Crear `src/renderer/kiosk/index.html` + `kiosk.js` (separados para claridad).
+- [x] Fullscreen + frame: false en main.js. Sin menú superior.
+- [x] Slider de 4 slides con gradientes animados (fade entre fondos + texto).
+- [x] Reloj digital grande con fecha completa en español.
+- [x] Input off-screen con foco infinito (blur → refocus, click y keydown en document → refocus).
+- [x] Al detectar "Enter", invoca IPC `buscar-socio-por-dni` y (si verde/amarillo) `registrar-asistencia`.
+- [x] Splash screen 5s con barra de progreso: Verde / Amarillo / Rojo / No encontrado.
+- [x] Migración definitiva a sql.js (WebAssembly): sin compilaciones nativas, sin ABI issues.
+
+## Fase 4: UI del Administrador (Pantalla 1) ✅
+- [x] Crear `src/renderer/admin/index.html` + `admin.js` con Tailwind CDN.
+- [x] Layout: Sidebar izquierdo (slate-900) con 4 nav items. Contenido derecho con scroll. Oculta/muestra divs con JS vanilla.
+- [x] Dashboard: caja del día, cantidad de cobros, contador de deudores, lista rápida de deudores recientes.
+- [x] Nuevo Socio: formulario con validación de DNI (6-8 dígitos), toast de confirmación.
+- [x] Cobrar Cuota: búsqueda por DNI (handler sin efectos `buscar-socio-admin`), tarjeta con estado de membresía, select con precio auto-completado, Efectivo/Transferencia.
+- [x] Deudores: tabla con días vencidos, botón WhatsApp (`wa.me/549{tel}?text=...`) y botón "Cobrar" con navegación directa.
+- [x] Handler `buscar-socio-admin` agregado en handlers.js y whitelist en preload.js.
+
+## Fase 5: Reportes y Backup (Final) ✅
+- [x] Instalar `exceljs` (`npm install exceljs`).
+- [x] UI Admin: Nueva sección "Reportes" en el sidebar con 3 tarjetas de acción.
+- [x] Exportar Excel: Botón "Generar Reporte Excel" → `dialog.showSaveDialog` → genera `.xlsx` con 3 pestañas (Caja de Hoy, Asistencias de Hoy, Lista de Deudores). Encabezados en negrita con fondo gris. Fila de TOTAL en Caja.
+- [x] Backup en Pendrive: Botón "Crear Backup de Seguridad" → `dialog.showOpenDialog` (carpeta) → `saveDatabase()` + `fs.copyFileSync` → archivo con fecha en nombre.
+- [x] Restaurar Sistema: Botón "Restaurar Base de Datos" → confirmación → `dialog.showOpenDialog` (.sqlite) → `fs.copyFileSync` → `app.relaunch()` + `app.exit(0)`.
+- [x] Handler `getDbFilePath()` exportado desde db.js para acceso desde handlers.js.
+
+## Fase 6: Dashboard Avanzado (BI) y Sistema "Marca Blanca" (White-label) ✅
+
+### 6.1. Base de Datos (`src/database/db.js`)
+- [x] **Nueva Tabla `configuracion`:** `CREATE TABLE IF NOT EXISTS configuracion (id INTEGER PRIMARY KEY CHECK (id = 1), nombre_gym TEXT, color_primario TEXT, logo_base64 TEXT)`.
+- [x] **Semilla de Configuración:** `INSERT OR IGNORE INTO configuracion ... VALUES (1, 'Gimnasio Local', '#EAB308', '')`.
+- [x] **Persistencia:** `guardar-configuracion` llama a `saveDatabase()` tras cada UPDATE.
+
+### 6.2. Main Process y Handlers IPC (`src/main/handlers.js`)
+- [x] **Canales de Configuración:** `obtener-configuracion` y `guardar-configuracion`.
+- [x] **Canal `obtener-estadisticas-dashboard`:** Retorna `total_socios`, `membresias_activas` (por fecha real de vencimiento), `deudores_activos`, `caja_diaria_total`, `caja_diaria_cantidad`, e `ingresos_mensuales` (array 12 posiciones, año en curso).
+- [x] **Preload:** 3 canales nuevos en lista blanca de `preload.js`.
+
+### 6.3. Interfaz del Administrador (`src/renderer/admin/`)
+- [x] **Sistema de Temas (Global):** Variable CSS `--color-primario` en `:root`. `applyTheme()` actualiza el color de botones, nav activo y barras del gráfico al instante.
+- [x] **Sidebar y Marca:** `nombre_gym` y logo dinámicos con fallback al placeholder "G".
+- [x] **Nueva Vista "Configuración":** Input texto, color picker, file input con `FileReader` + preview, botón Quitar logo. Guarda sin reiniciar.
+- [x] **Rework de Vista "Dashboard":** 4 KPIs, 2 acciones rápidas, Bar Chart de Chart.js (vía CDN) con colores de marca.
+
+### 6.4. Interfaz del Kiosco (`src/renderer/kiosk/`)
+- [x] **Sincronización de Marca:** Llama a `obtener-configuracion` en `init()` (async, no bloquea la UI).
+- [x] **Branding:** Logo en esquina superior derecha con opacidad 40%. Título dinámico. Nombre del gym en mensaje de "DNI no registrado".
+
+## Fase 7: Autenticación, CRM Extendido y Facturación Avanzada ✅
+
+### 7.1. Migraciones de Base de Datos (`src/database/db.js`)
+- [x] **Nueva tabla `usuarios`:** `runSafeMigration` via `PRAGMA table_info`. Semilla `admin / 1234 / admin` con `INSERT OR IGNORE`.
+- [x] **Actualizar tabla `socios`:** `email`, `domicilio`, `fecha_nacimiento`, `genero` agregados con `runSafeMigration`.
+- [x] **Actualizar tabla `pagos`:** `usuario_id`, `tipo_cobro DEFAULT 'Membresia'`, `descripcion` agregados con `runSafeMigration`.
+- [x] **Pase Diario:** Semilla `membresias` id=3 `INSERT OR IGNORE`. Todos los seeds usan IDs explícitos y `OR IGNORE` para idempotencia.
+
+### 7.2. Autenticación y Control de Acceso (Admin UI)
+- [x] **Pantalla de Login:** Overlay `z-50` al abrir; `main-layout` oculto hasta login exitoso. Aplica branding desde config antes del login.
+- [x] **Manejo de Sesión:** Handler `validar-login`. `currentUser` en memoria del Renderer. `applySession()` muestra el layout.
+- [x] **Control de Roles:** `data-admin-only` en nav "Reportes" y "Configuración". Botones de editar en Caja solo para admin. Nombre + rol del usuario logueado en el footer del Sidebar.
+- [x] **Gestión de Usuarios:** Sección en Configuración (solo visible para admin) con lista + form de alta de empleados. Handlers `obtener-usuarios`, `crear-usuario`, `eliminar-usuario`.
+
+### 7.3. Gestión de Socios / CRM (Admin UI)
+- [x] **Formulario Nuevo Socio:** Email, Domicilio, Fecha de Nacimiento (date), Select de Género. Handler `crear-socio` actualizado.
+- [x] **Cálculo de Edad:** `calcAge()` en tarjeta de Cobrar Cuota y modal de Editar Socio.
+- [x] **Editar Socio:** Botón "Editar" en Deudores y en tarjeta de Cobrar Cuota. Modal con todos los campos. Handler `editar-socio`.
+
+### 7.4. Facturación Avanzada y Pases Diarios (Admin UI)
+- [x] **Rework "Cobrar Cuota":** Toggle radio "Membresía Fija" / "Pase / Clase Suelta". Secciones condicionales.
+- [x] **Lógica Pase Diario:** Monto libre + días de validez + descripción. `membresia_id=3`, `duracion_dias_override`, `tipo_cobro='Pase'`. `usuario_id` del sesión activa.
+- [x] **Historial de Transacciones:** Vista "Caja y Movimientos" en sidebar. Tabla con Fecha, Socio, Tipo (badge), Descripción, Monto, Método, Empleado. Handler `obtener-movimientos` con JOINs.
+- [x] **Modificar Transacciones:** Botón "Editar" solo para admin. Modal para corregir Monto, Método y Descripción. Handler `editar-pago`.
+
+### 7.5. Reportes Excel (`exceljs`)
+- [x] **Actualizar Hoja "Caja de Hoy":** Columnas nuevas "Cobrado por", "Tipo", "Descripción" con JOIN a `usuarios`.
+
+### 7.6. Kiosco Visual (`src/renderer/kiosk/`)
+- [x] **Agrandar Logo:** `h-16 opacity-40` → `h-32 opacity-50`.
+
+
+## Fase 9: Módulo de Punto de Venta (Buffet), Inventario y Control de Gastos
+
+### 9.1. Base de Datos (`src/database/db.js`)
+IMPORTANTE: Crear las tablas usando `CREATE TABLE IF NOT EXISTS` para no afectar los datos actuales.
+- [ ] **Tabla `articulos`:** `(id INTEGER PRIMARY KEY, nombre TEXT NOT NULL, precio REAL NOT NULL, stock INTEGER NOT NULL DEFAULT 0, estado TEXT DEFAULT 'Activo')`.
+- [ ] **Tabla `ventas_articulos`:** `(id INTEGER PRIMARY KEY, articulo_id INTEGER, cantidad INTEGER, precio_unitario REAL, total REAL, fecha TEXT DEFAULT CURRENT_TIMESTAMP, usuario_id INTEGER)`. (Con FK a articulos y usuarios).
+- [ ] **Tabla `egresos`:** `(id INTEGER PRIMARY KEY, concepto TEXT, monto REAL, fecha TEXT DEFAULT CURRENT_TIMESTAMP, usuario_id INTEGER)`. (Con FK a usuarios).
+
+### 9.2. Main Process y Handlers IPC (`src/main/handlers.js`)
+- [ ] **Inventario (ABM):** Crear handlers `obtener-articulos` (trae todos los activos), `crear-articulo`, `actualizar-articulo` (actualiza nombre, precio o suma stock), y `eliminar-articulo` (hace un borrado lógico: `UPDATE estado = 'Inactivo'`).
+- [ ] **Venta de Buffet:** Crear handler `registrar-venta-articulo(articulo_id, cantidad, usuario_id)`. **CRÍTICO:** Debe usar una transacción (`BEGIN/COMMIT`). 1) Verificar que haya stock suficiente. 2) Insertar en `ventas_articulos`. 3) Descontar el stock en `articulos` (`UPDATE stock = stock - cantidad`). 
+- [ ] **Gastos:** Crear handler `registrar-egreso(concepto, monto, usuario_id)`.
+- [ ] **Dashboard Financiero:** Actualizar `obtener-estadisticas-dashboard` para que ahora retorne:
+  - `caja_cuotas_diaria`: Lo que ya estaba.
+  - `caja_buffet_diaria`: SUM de `ventas_articulos` de hoy.
+  - `egresos_diarios`: SUM de `egresos` de hoy.
+  - `rentabilidad_neta_diaria`: (Cuotas + Buffet) - Egresos.
+  - `productos_mas_vendidos`: Un array con el TOP 5 de artículos más vendidos en el mes (GROUP BY articulo_id, ORDER BY cantidad total DESC).
+- [ ] **Preload:** Exponer todos los nuevos handlers en `preload.js`.
+
+### 9.3. UI Administrador - Inventario y Gastos (Solo Admin)
+- [ ] **Vista "Inventario Buffet":** Nueva sección en el Sidebar (usar `data-admin-only`). Debe tener:
+  - Formulario para **Dar de Alta** nuevo producto (Nombre, Precio, Stock inicial).
+  - Tabla con el listado de productos activos.
+  - Botones en la tabla para **Editar** (abre modal para cambiar precio o agregar stock) y **Eliminar**.
+- [ ] **Vista "Gastos/Egresos":** Nueva sección. Formulario simple para cargar un gasto (Concepto y Monto) que use el `usuario_id` actual. Tabla inferior mostrando los gastos cargados hoy.
+
+### 9.4. UI Administrador - Punto de Venta (Todos los roles)
+- [ ] **Vista "Punto de Venta / Buffet":** Nueva sección en el Sidebar visible para Empleados y Admins.
+  - Diseño estilo POS: Una grilla (Grid) de tarjetas grandes, una por cada artículo disponible que tenga `stock > 0`. Cada tarjeta muestra Nombre, Precio y Stock disponible.
+  - Al hacer clic en una tarjeta, abrir un modal rápido que pregunte "Cantidad" (por defecto 1, máximo el stock actual), calcule el total y tenga un botón "Cobrar". Al confirmar, llama a `registrar-venta-articulo` y muestra un toast de éxito.
+
+### 9.5. UI Administrador - Dashboard y Reportes
+- [ ] **Actualizar Dashboard:** 
+  - Agregar KPIs para "Caja Buffet (Hoy)", "Gastos (Hoy)" y "Caja Neta (Hoy)".
+  - Agregar una pequeña tabla o lista visual debajo de los KPIs que muestre el "Top 5 Productos Más Vendidos" con su cantidad.
+- [ ] **Actualizar Excel (`exceljs`):** Modificar el handler `generar-reporte-excel` para agregar dos pestañas nuevas:
+  - "Ventas Buffet de Hoy": Qué se vendió, cantidad, total y qué empleado lo cobró.
+  - "Gastos de Hoy": Concepto, monto y empleado que lo registró.
+  
+  
+## Fase 10: Gestor de Membresías Dinámicas y Grupos Familiares
+
+### 10.1. Base de Datos (`src/database/db.js`)
+- [ ] **Modificar `membresias`:** Ejecutar migración segura para agregar columna `estado TEXT DEFAULT 'Activo'`. Esto permite borrado lógico sin romper historiales de pago.
+- [ ] **Nueva Tabla `grupos_familiares`:** Crear tabla `(id INTEGER PRIMARY KEY, nombre TEXT NOT NULL)`.
+- [ ] **Modificar `socios`:** Ejecutar migración segura para agregar columna `grupo_id INTEGER` (FK a `grupos_familiares`, nullable).
+
+### 10.2. Backend y Lógica Core (`src/main/handlers.js`)
+- [ ] **ABM Membresías:** Crear handlers `crear-membresia(nombre, duracion_dias, precio)`, `actualizar-membresia(id, datos)`, y `eliminar-membresia(id)` (soft delete, `UPDATE estado='Inactivo'`). Modificar `obtener-membresias` para que solo retorne las de `estado='Activo'`.
+- [ ] **ABM Grupos:** Crear handlers `crear-grupo(nombre)`, `obtener-grupos()`, y un handler `actualizar-grupo-socio(socio_id, grupo_id)` para asignar o quitar un socio de un grupo.
+- [ ] **Modificación CRÍTICA del Kiosco (`buscar-socio-por-dni`):** Cambiar la query de validación de vencimiento. Si el socio tiene un `grupo_id` asignado, el sistema debe buscar el `MAX(fecha_vencimiento)` en la tabla `pagos` de **TODOS** los socios que compartan ese mismo `grupo_id`. Si esa fecha máxima es mayor a hoy, el socio ingresa en Verde (hereda el pago de su familiar).
+
+### 10.3. Interfaz Administrador - Membresías
+- [ ] **Vista "Gestión de Membresías":** Nueva sección en Configuración (solo admin). Mostrar tabla con membresías activas. Formulario para dar de alta nuevas (Nombre, Días de duración, Precio fijo). Botones para Editar y Eliminar (borrado lógico).
+
+### 10.4. Interfaz Administrador - CRM y Grupos
+- [ ] **Vista "Grupos Familiares":** Nueva sección en el Sidebar. Permite crear un nombre de grupo (ej: "Hermanos Gómez"). Mostrar una lista de grupos, y al hacer clic, permitir buscar socios por DNI para agregarlos o quitarlos del grupo.
+- [ ] **Cobro de Cuota Mejorado (Precio Editable):** En la vista "Cobrar Cuota", asegurarse de que el campo "Monto a Cobrar" sea un `<input type="number">` independiente. Al seleccionar una membresía en el `<select>`, un evento JS debe rellenar este input con el precio oficial de la DB, **PERO** el usuario debe poder borrar ese número y escribir otro manualmente antes de darle a "Cobrar". El handler `registrar-pago` debe usar este monto manual.
+- [ ] **Indicador Familiar:** En la tarjeta que aparece al buscar un socio en "Cobrar Cuota", si el socio tiene un `grupo_id`, mostrar un badge visual (ej: "Miembro de: Grupo Gómez") para que el cajero sepa que le está cobrando a un grupo.
+
+## Fase 11: Empaquetado y Distribución (.exe)
+
+### 11.1. Configuración de electron-builder (`package.json`)
+- [ ] Instalar `electron-builder` como dependencia de desarrollo si aún no está (`npm install --save-dev electron-builder`).
+- [ ] Modificar el `package.json` agregando la clave `"build"` en la raíz del JSON con la siguiente configuración:
+  - `"appId"`: `"com.baliherafitness.gymmanager"`
+  - `"productName"`: `"Bali Gym Manager"`
+  - `"directories"`: `{ "output": "dist" }`
+  - `"win"`: `{ "target": "nsis" }`
+  - **CRÍTICO:** Configurar `"extraResources"` o `"files"` para garantizar que el archivo `sql-wasm.wasm` de `sql.js` se copie correctamente al ejecutable empaquetado, ya que de lo contrario la base de datos fallará en producción.
+- [ ] Agregar en la sección `"scripts"` el comando de empaquetado: `"build": "electron-builder --win"`.
+
+### 11.2. Ajustes de Producción (`src/main/main.js`)
+- [ ] Asegurarse de que las Developer Tools (Consola de Chrome) NO se abran automáticamente si la aplicación está empaquetada (`app.isPackaged`).
+- [ ] Quitar la barra de menú predeterminada de Windows en la ventana del Admin (`autoHideMenuBar: true` o `setMenuBarVisibility(false)`).
+
+## Fase 12: Módulo de Pagos QR y Validación de Suscripción Híbrida
+
+### 12.1. Gestión de Pagos del Gimnasio (Mercado Pago)
+- [x] **Configuración de QR:** En la vista de Configuración, añadir un campo para subir la imagen del QR de Mercado Pago del gimnasio (almacenar en `configuracion` como base64).
+- [x] **Visualización en Cobro:** En la vista "Cobrar Cuota", añadir un botón "Pagar con QR". Al presionarlo, abrir un modal que muestre el QR gigante para que el socio escanee desde el mostrador.
+
+### 12.2. Panel de Soporte y Liquidación (Membresía Mateo)
+- [x] **Lógica de Cálculo:** Crear un handler `obtener-estado-soporte` que:
+  - Cuente socios activos al día de la fecha.
+  - Calcule: $50.000 (Base) + (Socios Activos * $1.000).
+- [x] **Vista de Soporte (Solo Admin):** Crear una sección "Soporte Técnico" que muestre el monto a pagar este mes, el CBU/Alias de Mateo y un botón para informar el pago.
+
+### 12.3. Sistema de Alertas y Validación Online
+- [x] **Detección de Conexión:** Usar `navigator.onLine` para activar un proceso de validación cuando haya internet. (Implementado silenciosamente en `checkSoporteBanner`, sin overhead offline.)
+- [x] **Banners de Cobro:** - Del día 5 al 10 de cada mes: Mostrar un banner amarillo sutil en el Dashboard: "Período de abono de soporte activo".
+  - Después del día 10: Si el pago no está validado, mostrar un banner naranja persistente: "Aviso: Soporte técnico pendiente de pago. Por favor, regularice para mantener actualizaciones." 
+  - IMPORTANTE: No bloquea las funciones core del gimnasio, solo alerta visual.
+
+### 12.4. Reportes de Gestión a Distancia
+- [ ] **Exportación Remota:** Añadir una función que, al haber internet, permita enviar el reporte de Excel generado automáticamente a un email configurado (el del dueño) o guardarlo en una carpeta sincronizada (Google Drive/Dropbox).

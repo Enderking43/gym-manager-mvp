@@ -36,6 +36,11 @@ const ALLOWED_CHANNELS = [
   'obtener-grupos',
   'actualizar-grupo-socio',
   'eliminar-grupo',
+  'obtener-estado-soporte',
+  'informar-pago-soporte',
+  'guardar-validacion-licencia',
+  'imprimir-ticket',
+  'simular-datos-masivos',
 ];
 
 contextBridge.exposeInMainWorld('api', {

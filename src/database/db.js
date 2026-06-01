@@ -169,6 +169,16 @@ function runMigrations() {
   // Fase 10: estado en membresías (soft delete) y grupo familiar en socios
   runSafeMigration('membresias', 'estado',   "TEXT DEFAULT 'Activo'");
   runSafeMigration('socios',     'grupo_id', 'INTEGER');
+
+  // Fase 12: QR de Mercado Pago y registro de pago de soporte mensual
+  runSafeMigration('configuracion', 'qr_mercadopago_base64', "TEXT DEFAULT ''");
+  runSafeMigration('configuracion', 'soporte_pagado_mes',    "TEXT DEFAULT ''");
+
+  // Fase 13: Fecha de última validación remota de licencia (offline grace period)
+  runSafeMigration('configuracion', 'licencia_ultima_validacion', "TEXT DEFAULT ''");
+
+  // Fase 13.1: Toggle de impresión térmica opcional
+  runSafeMigration('configuracion', 'impresion_habilitada', 'INTEGER DEFAULT 0');
 }
 
 function seedMemberships() {
